@@ -16,8 +16,6 @@ This repository aims to:
 - Python3 (required for config generation and tuning)
   - Python packages (can be installed with pip or conda)
     - ``numpy``
-    - ``scikit-learn``
-    - ``scipy``
 - AMD RDNA GPU (code needs to be modified to support CDNA GPUs)
 
 ### Build Steps
