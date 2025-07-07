@@ -8,101 +8,290 @@
             },
             "layout": {
                 "A": "row_major",
-                "B": "row_major"
+                "B": "row_major",
+                "C": "row_major"
+            },
+            "config": {
+                "block_size": 256,
+                "block_m": 64,
+                "block_n": 256,
+                "block_k": 8,
+                "warp_tile_m_count": 2,
+                "warp_tile_n_count": 4,
+                "thread_tile_m": 2,
+                "thread_tile_n": 4,
+                "threads_n": 4
+            }
+        },
+        {
+            "range": {
+                "M": 1024,
+                "N": 1024,
+                "K": 1024
+            },
+            "layout": {
+                "A": "row_major",
+                "B": "row_major",
+                "C": "col_major"
+            },
+            "config": {
+                "block_size": 128,
+                "block_m": 32,
+                "block_n": 128,
+                "block_k": 8,
+                "warp_tile_m_count": 2,
+                "warp_tile_n_count": 8,
+                "thread_tile_m": 2,
+                "thread_tile_n": 1,
+                "threads_n": 4
+            }
+        },
+        {
+            "range": {
+                "M": 1024,
+                "N": 1024,
+                "K": 1024
+            },
+            "layout": {
+                "A": "row_major",
+                "B": "col_major",
+                "C": "row_major"
+            },
+            "config": {
+                "block_size": 256,
+                "block_m": 128,
+                "block_n": 64,
+                "block_k": 32,
+                "warp_tile_m_count": 4,
+                "warp_tile_n_count": 1,
+                "thread_tile_m": 1,
+                "thread_tile_n": 8,
+                "threads_n": 2
+            }
+        },
+        {
+            "range": {
+                "M": 1024,
+                "N": 1024,
+                "K": 1024
+            },
+            "layout": {
+                "A": "row_major",
+                "B": "col_major",
+                "C": "col_major"
+            },
+            "config": {
+                "block_size": 128,
+                "block_m": 64,
+                "block_n": 64,
+                "block_k": 32,
+                "warp_tile_m_count": 8,
+                "warp_tile_n_count": 2,
+                "thread_tile_m": 1,
+                "thread_tile_n": 2,
+                "threads_n": 16
+            }
+        },
+        {
+            "range": {
+                "M": 1024,
+                "N": 1024,
+                "K": 1024
+            },
+            "layout": {
+                "A": "col_major",
+                "B": "row_major",
+                "C": "row_major"
+            },
+            "config": {
+                "block_size": 128,
+                "block_m": 128,
+                "block_n": 64,
+                "block_k": 16,
+                "warp_tile_m_count": 2,
+                "warp_tile_n_count": 2,
+                "thread_tile_m": 4,
+                "thread_tile_n": 4,
+                "threads_n": 8
+            }
+        },
+        {
+            "range": {
+                "M": 1024,
+                "N": 1024,
+                "K": 1024
+            },
+            "layout": {
+                "A": "col_major",
+                "B": "row_major",
+                "C": "col_major"
+            },
+            "config": {
+                "block_size": 256,
+                "block_m": 64,
+                "block_n": 256,
+                "block_k": 8,
+                "warp_tile_m_count": 4,
+                "warp_tile_n_count": 8,
+                "thread_tile_m": 2,
+                "thread_tile_n": 1,
+                "threads_n": 8
+            }
+        },
+        {
+            "range": {
+                "M": 1024,
+                "N": 1024,
+                "K": 1024
+            },
+            "layout": {
+                "A": "col_major",
+                "B": "col_major",
+                "C": "row_major"
+            },
+            "config": {
+                "block_size": 256,
+                "block_m": 128,
+                "block_n": 64,
+                "block_k": 16,
+                "warp_tile_m_count": 1,
+                "warp_tile_n_count": 1,
+                "thread_tile_m": 4,
+                "thread_tile_n": 8,
+                "threads_n": 2
+            }
+        },
+        {
+            "range": {
+                "M": 1024,
+                "N": 1024,
+                "K": 1024
+            },
+            "layout": {
+                "A": "col_major",
+                "B": "col_major",
+                "C": "col_major"
+            },
+            "config": {
+                "block_size": 256,
+                "block_m": 128,
+                "block_n": 128,
+                "block_k": 8,
+                "warp_tile_m_count": 2,
+                "warp_tile_n_count": 2,
+                "thread_tile_m": 4,
+                "thread_tile_n": 4,
+                "threads_n": 4
+            }
+        },
+        {
+            "range": {
+                "M": 2048,
+                "N": 2048,
+                "K": 2048
+            },
+            "layout": {
+                "A": "row_major",
+                "B": "row_major",
+                "C": "row_major"
+            },
+            "config": {
+                "block_size": 256,
+                "block_m": 128,
+                "block_n": 256,
+                "block_k": 8,
+                "warp_tile_m_count": 4,
+                "warp_tile_n_count": 1,
+                "thread_tile_m": 8,
+                "thread_tile_n": 4,
+                "threads_n": 16
+            }
+        },
+        {
+            "range": {
+                "M": 2048,
+                "N": 2048,
+                "K": 2048
+            },
+            "layout": {
+                "A": "row_major",
+                "B": "row_major",
+                "C": "col_major"
+            },
+            "config": {
+                "block_size": 256,
+                "block_m": 128,
+                "block_n": 256,
+                "block_k": 8,
+                "warp_tile_m_count": 4,
+                "warp_tile_n_count": 1,
+                "thread_tile_m": 8,
+                "thread_tile_n": 4,
+                "threads_n": 16
+            }
+        },
+        {
+            "range": {
+                "M": 2048,
+                "N": 2048,
+                "K": 2048
+            },
+            "layout": {
+                "A": "row_major",
+                "B": "col_major",
+                "C": "row_major"
+            },
+            "config": {
+                "block_size": 256,
+                "block_m": 128,
+                "block_n": 64,
+                "block_k": 32,
+                "warp_tile_m_count": 8,
+                "warp_tile_n_count": 2,
+                "thread_tile_m": 1,
+                "thread_tile_n": 2,
+                "threads_n": 2
+            }
+        },
+        {
+            "range": {
+                "M": 2048,
+                "N": 2048,
+                "K": 2048
+            },
+            "layout": {
+                "A": "row_major",
+                "B": "col_major",
+                "C": "col_major"
             },
             "config": {
                 "block_size": 256,
                 "block_m": 64,
                 "block_n": 128,
-                "block_k": 8,
-                "warp_tile_m_count": 8,
+                "block_k": 32,
+                "warp_tile_m_count": 2,
                 "warp_tile_n_count": 2,
-                "thread_tile_m": 1,
+                "thread_tile_m": 4,
                 "thread_tile_n": 2,
-                "threads_n": 8
+                "threads_n": 16
             }
         },
         {
             "range": {
-                "M": 1024,
-                "N": 1024,
-                "K": 1024
-            },
-            "layout": {
-                "A": "row_major",
-                "B": "col_major"
-            },
-            "config": {
-                "block_size": 128,
-                "block_m": 128,
-                "block_n": 128,
-                "block_k": 4,
-                "warp_tile_m_count": 4,
-                "warp_tile_n_count": 4,
-                "thread_tile_m": 2,
-                "thread_tile_n": 4,
-                "threads_n": 4
-            }
-        },
-        {
-            "range": {
-                "M": 1024,
-                "N": 1024,
-                "K": 1024
+                "M": 2048,
+                "N": 2048,
+                "K": 2048
             },
             "layout": {
                 "A": "col_major",
-                "B": "row_major"
+                "B": "row_major",
+                "C": "row_major"
             },
             "config": {
                 "block_size": 64,
                 "block_m": 128,
                 "block_n": 64,
-                "block_k": 16,
-                "warp_tile_m_count": 8,
-                "warp_tile_n_count": 2,
-                "thread_tile_m": 4,
-                "thread_tile_n": 2,
-                "threads_n": 8
-            }
-        },
-        {
-            "range": {
-                "M": 1024,
-                "N": 1024,
-                "K": 1024
-            },
-            "layout": {
-                "A": "col_major",
-                "B": "col_major"
-            },
-            "config": {
-                "block_size": 256,
-                "block_m": 256,
-                "block_n": 64,
-                "block_k": 16,
-                "warp_tile_m_count": 4,
-                "warp_tile_n_count": 4,
-                "thread_tile_m": 4,
-                "thread_tile_n": 1,
-                "threads_n": 4
-            }
-        },
-        {
-            "range": {
-                "M": 2048,
-                "N": 2048,
-                "K": 2048
-            },
-            "layout": {
-                "A": "row_major",
-                "B": "row_major"
-            },
-            "config": {
-                "block_size": 128,
-                "block_m": 128,
-                "block_n": 128,
-                "block_k": 4,
+                "block_k": 8,
                 "warp_tile_m_count": 4,
                 "warp_tile_n_count": 4,
                 "thread_tile_m": 2,
@@ -117,19 +306,20 @@
                 "K": 2048
             },
             "layout": {
-                "A": "row_major",
-                "B": "col_major"
+                "A": "col_major",
+                "B": "row_major",
+                "C": "col_major"
             },
             "config": {
-                "block_size": 512,
-                "block_m": 128,
+                "block_size": 128,
+                "block_m": 64,
                 "block_n": 64,
                 "block_k": 4,
-                "warp_tile_m_count": 4,
-                "warp_tile_n_count": 4,
-                "thread_tile_m": 1,
-                "thread_tile_n": 1,
-                "threads_n": 4
+                "warp_tile_m_count": 2,
+                "warp_tile_n_count": 2,
+                "thread_tile_m": 4,
+                "thread_tile_n": 2,
+                "threads_n": 8
             }
         },
         {
@@ -140,16 +330,17 @@
             },
             "layout": {
                 "A": "col_major",
-                "B": "row_major"
+                "B": "col_major",
+                "C": "row_major"
             },
             "config": {
                 "block_size": 128,
                 "block_m": 128,
                 "block_n": 128,
-                "block_k": 8,
-                "warp_tile_m_count": 8,
-                "warp_tile_n_count": 2,
-                "thread_tile_m": 2,
+                "block_k": 16,
+                "warp_tile_m_count": 4,
+                "warp_tile_n_count": 1,
+                "thread_tile_m": 8,
                 "thread_tile_n": 4,
                 "threads_n": 8
             }
@@ -162,18 +353,19 @@
             },
             "layout": {
                 "A": "col_major",
-                "B": "col_major"
+                "B": "col_major",
+                "C": "col_major"
             },
             "config": {
-                "block_size": 128,
+                "block_size": 256,
                 "block_m": 128,
                 "block_n": 128,
-                "block_k": 4,
+                "block_k": 16,
                 "warp_tile_m_count": 4,
-                "warp_tile_n_count": 4,
-                "thread_tile_m": 2,
+                "warp_tile_n_count": 1,
+                "thread_tile_m": 4,
                 "thread_tile_n": 4,
-                "threads_n": 4
+                "threads_n": 8
             }
         },
         {
@@ -184,40 +376,88 @@
             },
             "layout": {
                 "A": "row_major",
-                "B": "row_major"
+                "B": "row_major",
+                "C": "row_major"
             },
             "config": {
-                "block_size": 128,
+                "block_size": 256,
                 "block_m": 128,
-                "block_n": 128,
-                "block_k": 4,
-                "warp_tile_m_count": 4,
-                "warp_tile_n_count": 4,
-                "thread_tile_m": 2,
-                "thread_tile_n": 4,
-                "threads_n": 4
-            }
-        },
-        {
-            "range": {
-                "M": 4096,
-                "N": 4096,
-                "K": 4096
-            },
-            "layout": {
-                "A": "row_major",
-                "B": "col_major"
-            },
-            "config": {
-                "block_size": 512,
-                "block_m": 256,
                 "block_n": 256,
-                "block_k": 4,
+                "block_k": 8,
+                "warp_tile_m_count": 4,
+                "warp_tile_n_count": 1,
+                "thread_tile_m": 8,
+                "thread_tile_n": 4,
+                "threads_n": 16
+            }
+        },
+        {
+            "range": {
+                "M": 4096,
+                "N": 4096,
+                "K": 4096
+            },
+            "layout": {
+                "A": "row_major",
+                "B": "row_major",
+                "C": "col_major"
+            },
+            "config": {
+                "block_size": 256,
+                "block_m": 128,
+                "block_n": 256,
+                "block_k": 8,
+                "warp_tile_m_count": 4,
+                "warp_tile_n_count": 1,
+                "thread_tile_m": 8,
+                "thread_tile_n": 4,
+                "threads_n": 16
+            }
+        },
+        {
+            "range": {
+                "M": 4096,
+                "N": 4096,
+                "K": 4096
+            },
+            "layout": {
+                "A": "row_major",
+                "B": "col_major",
+                "C": "row_major"
+            },
+            "config": {
+                "block_size": 256,
+                "block_m": 256,
+                "block_n": 128,
+                "block_k": 16,
                 "warp_tile_m_count": 8,
-                "warp_tile_n_count": 8,
-                "thread_tile_m": 1,
+                "warp_tile_n_count": 2,
+                "thread_tile_m": 4,
                 "thread_tile_n": 2,
-                "threads_n": 4
+                "threads_n": 16
+            }
+        },
+        {
+            "range": {
+                "M": 4096,
+                "N": 4096,
+                "K": 4096
+            },
+            "layout": {
+                "A": "row_major",
+                "B": "col_major",
+                "C": "col_major"
+            },
+            "config": {
+                "block_size": 128,
+                "block_m": 128,
+                "block_n": 128,
+                "block_k": 16,
+                "warp_tile_m_count": 1,
+                "warp_tile_n_count": 4,
+                "thread_tile_m": 8,
+                "thread_tile_n": 4,
+                "threads_n": 8
             }
         },
         {
@@ -228,7 +468,8 @@
             },
             "layout": {
                 "A": "col_major",
-                "B": "row_major"
+                "B": "row_major",
+                "C": "row_major"
             },
             "config": {
                 "block_size": 128,
@@ -239,7 +480,7 @@
                 "warp_tile_n_count": 4,
                 "thread_tile_m": 2,
                 "thread_tile_n": 4,
-                "threads_n": 4
+                "threads_n": 8
             }
         },
         {
@@ -250,61 +491,64 @@
             },
             "layout": {
                 "A": "col_major",
-                "B": "col_major"
+                "B": "row_major",
+                "C": "col_major"
             },
             "config": {
                 "block_size": 128,
                 "block_m": 128,
                 "block_n": 128,
-                "block_k": 4,
+                "block_k": 8,
                 "warp_tile_m_count": 4,
-                "warp_tile_n_count": 4,
-                "thread_tile_m": 2,
+                "warp_tile_n_count": 1,
+                "thread_tile_m": 8,
                 "thread_tile_n": 4,
-                "threads_n": 4
+                "threads_n": 16
             }
         },
         {
             "range": {
-                "M": 8192,
-                "N": 8192,
-                "K": 8192
+                "M": 4096,
+                "N": 4096,
+                "K": 4096
             },
             "layout": {
-                "A": "row_major",
-                "B": "row_major"
+                "A": "col_major",
+                "B": "col_major",
+                "C": "row_major"
             },
             "config": {
-                "block_size": 256,
+                "block_size": 128,
                 "block_m": 128,
-                "block_n": 256,
-                "block_k": 4,
-                "warp_tile_m_count": 4,
+                "block_n": 128,
+                "block_k": 16,
+                "warp_tile_m_count": 8,
                 "warp_tile_n_count": 2,
-                "thread_tile_m": 2,
+                "thread_tile_m": 1,
                 "thread_tile_n": 8,
                 "threads_n": 4
             }
         },
         {
             "range": {
-                "M": 8192,
-                "N": 8192,
-                "K": 8192
+                "M": 4096,
+                "N": 4096,
+                "K": 4096
             },
             "layout": {
-                "A": "row_major",
-                "B": "col_major"
+                "A": "col_major",
+                "B": "col_major",
+                "C": "col_major"
             },
             "config": {
-                "block_size": 512,
+                "block_size": 128,
                 "block_m": 256,
-                "block_n": 256,
-                "block_k": 4,
-                "warp_tile_m_count": 4,
-                "warp_tile_n_count": 4,
-                "thread_tile_m": 2,
-                "thread_tile_n": 4,
+                "block_n": 64,
+                "block_k": 8,
+                "warp_tile_m_count": 1,
+                "warp_tile_n_count": 8,
+                "thread_tile_m": 8,
+                "thread_tile_n": 2,
                 "threads_n": 4
             }
         },
@@ -315,13 +559,37 @@
                 "K": 8192
             },
             "layout": {
-                "A": "col_major",
-                "B": "row_major"
+                "A": "row_major",
+                "B": "row_major",
+                "C": "row_major"
             },
             "config": {
-                "block_size": 128,
+                "block_size": 256,
                 "block_m": 128,
-                "block_n": 128,
+                "block_n": 256,
+                "block_k": 8,
+                "warp_tile_m_count": 4,
+                "warp_tile_n_count": 1,
+                "thread_tile_m": 8,
+                "thread_tile_n": 4,
+                "threads_n": 16
+            }
+        },
+        {
+            "range": {
+                "M": 8192,
+                "N": 8192,
+                "K": 8192
+            },
+            "layout": {
+                "A": "row_major",
+                "B": "row_major",
+                "C": "col_major"
+            },
+            "config": {
+                "block_size": 512,
+                "block_m": 256,
+                "block_n": 256,
                 "block_k": 8,
                 "warp_tile_m_count": 4,
                 "warp_tile_n_count": 4,
@@ -337,17 +605,133 @@
                 "K": 8192
             },
             "layout": {
+                "A": "row_major",
+                "B": "col_major",
+                "C": "row_major"
+            },
+            "config": {
+                "block_size": 512,
+                "block_m": 256,
+                "block_n": 256,
+                "block_k": 8,
+                "warp_tile_m_count": 2,
+                "warp_tile_n_count": 8,
+                "thread_tile_m": 4,
+                "thread_tile_n": 2,
+                "threads_n": 8
+            }
+        },
+        {
+            "range": {
+                "M": 8192,
+                "N": 8192,
+                "K": 8192
+            },
+            "layout": {
+                "A": "row_major",
+                "B": "col_major",
+                "C": "col_major"
+            },
+            "config": {
+                "block_size": 512,
+                "block_m": 256,
+                "block_n": 256,
+                "block_k": 8,
+                "warp_tile_m_count": 2,
+                "warp_tile_n_count": 4,
+                "thread_tile_m": 4,
+                "thread_tile_n": 4,
+                "threads_n": 2
+            }
+        },
+        {
+            "range": {
+                "M": 8192,
+                "N": 8192,
+                "K": 8192
+            },
+            "layout": {
                 "A": "col_major",
-                "B": "col_major"
+                "B": "row_major",
+                "C": "row_major"
             },
             "config": {
                 "block_size": 128,
                 "block_m": 128,
                 "block_n": 128,
-                "block_k": 4,
+                "block_k": 8,
                 "warp_tile_m_count": 4,
                 "warp_tile_n_count": 4,
                 "thread_tile_m": 2,
+                "thread_tile_n": 4,
+                "threads_n": 8
+            }
+        },
+        {
+            "range": {
+                "M": 8192,
+                "N": 8192,
+                "K": 8192
+            },
+            "layout": {
+                "A": "col_major",
+                "B": "row_major",
+                "C": "col_major"
+            },
+            "config": {
+                "block_size": 128,
+                "block_m": 128,
+                "block_n": 128,
+                "block_k": 8,
+                "warp_tile_m_count": 4,
+                "warp_tile_n_count": 1,
+                "thread_tile_m": 8,
+                "thread_tile_n": 4,
+                "threads_n": 16
+            }
+        },
+        {
+            "range": {
+                "M": 8192,
+                "N": 8192,
+                "K": 8192
+            },
+            "layout": {
+                "A": "col_major",
+                "B": "col_major",
+                "C": "row_major"
+            },
+            "config": {
+                "block_size": 256,
+                "block_m": 256,
+                "block_n": 128,
+                "block_k": 4,
+                "warp_tile_m_count": 1,
+                "warp_tile_n_count": 4,
+                "thread_tile_m": 8,
+                "thread_tile_n": 4,
+                "threads_n": 8
+            }
+        },
+        {
+            "range": {
+                "M": 8192,
+                "N": 8192,
+                "K": 8192
+            },
+            "layout": {
+                "A": "col_major",
+                "B": "col_major",
+                "C": "col_major"
+            },
+            "config": {
+                "block_size": 256,
+                "block_m": 256,
+                "block_n": 128,
+                "block_k": 4,
+                "warp_tile_m_count": 8,
+                "warp_tile_n_count": 4,
+                "thread_tile_m": 1,
                 "thread_tile_n": 4,
                 "threads_n": 4
             }

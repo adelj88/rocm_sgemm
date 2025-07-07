@@ -279,8 +279,11 @@ bool compile_kernel(const config_params& config, size_t M, size_t N)
                                                  include_dir + "/kernel/load.hpp",
                                                  include_dir + "/kernel/mapping.hpp"};
 
-    std::vector<std::string> header_name_strings
-        = {"kernel/kernel.hpp", "kernel/common.hpp", "kernel/fragment.hpp", "kernel/load.hpp", "kernel/mapping.hpp"};
+    std::vector<std::string> header_name_strings = {"kernel/kernel.hpp",
+                                                    "kernel/common.hpp",
+                                                    "kernel/fragment.hpp",
+                                                    "kernel/load.hpp",
+                                                    "kernel/mapping.hpp"};
 
     // Read all header files
     for(size_t i = 0; i < required_headers.size(); ++i)
@@ -407,16 +410,24 @@ void run_kernel_benchmark(benchmark::State& state)
     const int grid_m = (M + g_config.block_m - 1) / g_config.block_m;
     const int grid_n = (N + g_config.block_n - 1) / g_config.block_n;
 
-    dim3 grid_dim(grid_n * grid_m);
+    dim3 grid_dim(grid_n, grid_m);
     dim3 block_dim(g_config.block_size);
 
-    /*bool swap_blocks = (g_config.layout_a == 1 && g_config.layout_b == 1);
+    bool swap_blocks = (g_config.layout_a == 1 && g_config.layout_b == 1);
 
-    if (swap_blocks)
+    bool use_hilbert = (g_config.layout_a == 1 && g_config.layout_b == 0)
+                       || (g_config.layout_a == 0 && g_config.layout_b == 1);
+
+    if(swap_blocks)
     {
         grid_dim.x = grid_m;
         grid_dim.y = grid_n;
-    }*/
+    }
+    else if(use_hilbert)
+    {
+        grid_dim.x = grid_n * grid_m;
+        grid_dim.y = 1;
+    }
 
     gpu_timer timer;
 

@@ -149,53 +149,13 @@ public:
     }
 };
 
-template<m_input MATRIX, m_layout ACCESS, class T, int TILE>
-__device__ __forceinline__ auto load_matrix(fragment<T, TILE>& frag, const T* data, int M, int N) ->
-    typename std::enable_if<(MATRIX == m_input::matrix_a && ACCESS == m_layout::row_major),
-                            void>::type
-{
-    const T* tmp = reinterpret_cast<const T*>(data);
-    for(auto it = frag.begin(); it != frag.end(); ++it)
-    {
-        *it = *tmp;
-        tmp += N;
-    }
-}
-
-template<m_input MATRIX, m_layout ACCESS, class T, int TILE>
-__device__ __forceinline__ auto load_matrix(fragment<T, TILE>& frag, const T* data, int M, int N) ->
-    typename std::enable_if<(MATRIX == m_input::matrix_a && ACCESS == m_layout::col_major),
-                            void>::type
+template<class T, int TILE>
+__device__ __forceinline__ void load_matrix(fragment<T, TILE>& frag, const T* data, int M, int N)
 {
     auto& tmp = frag.get();
     for(int i = 0; i < TILE; ++i)
     {
         tmp[i] = data[i];
-    }
-}
-
-template<m_input MATRIX, m_layout ACCESS, class T, int TILE>
-__device__ __forceinline__ auto load_matrix(fragment<T, TILE>& frag, const T* data, int M, int N) ->
-    typename std::enable_if<(MATRIX == m_input::matrix_b && ACCESS == m_layout::row_major),
-                            void>::type
-{
-    auto& tmp = frag.get();
-    for(int i = 0; i < TILE; ++i)
-    {
-        tmp[i] = data[i];
-    }
-}
-
-template<m_input MATRIX, m_layout ACCESS, class T, int TILE>
-__device__ __forceinline__ auto load_matrix(fragment<T, TILE>& frag, const T* data, int M, int N) ->
-    typename std::enable_if<(MATRIX == m_input::matrix_b && ACCESS == m_layout::col_major),
-                            void>::type
-{
-    const T* tmp = reinterpret_cast<const T*>(data);
-    for(auto it = frag.begin(); it != frag.end(); ++it)
-    {
-        *it = *tmp;
-        tmp += M;
     }
 }
 

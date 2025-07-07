@@ -103,8 +103,12 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
     constexpr int lds_size = (block_m * block_k) + (block_k * block_n);
 
     // Block coordinates
-    /*constexpr bool swap_blocks
+    constexpr bool swap_blocks
         = (LAYOUT_A == m_layout::col_major && LAYOUT_B == m_layout::col_major);
+
+    constexpr bool use_hilbert
+        = (LAYOUT_A == m_layout::col_major && LAYOUT_B == m_layout::row_major)
+          || (LAYOUT_A == m_layout::row_major && LAYOUT_B == m_layout::col_major);
 
     int block_row, block_col;
     if constexpr(swap_blocks)
@@ -112,19 +116,20 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
         block_row = blockIdx.x * block_m;
         block_col = blockIdx.y * block_n;
     }
+    else if constexpr(use_hilbert)
+    {
+        const int grid_m  = (M + block_m - 1) / block_m;
+        const int grid_n  = (N + block_n - 1) / block_n;
+        const int tile_id = blockIdx.x;
+
+        // Get block coordinates using hilbert mapping
+        hilbert_tile_mapping<block_m, block_n>(tile_id, grid_m, grid_n, &block_row, &block_col);
+    }
     else
     {
         block_row = blockIdx.y * block_m;
         block_col = blockIdx.x * block_n;
-    }*/
-    // Calculate grid dimensions
-    const int grid_m  = (M + block_m - 1) / block_m;
-    const int grid_n  = (N + block_n - 1) / block_n;
-    const int tile_id = blockIdx.x;
-
-    // Get block coordinates using hilbert mapping
-    int block_row, block_col;
-    hilbert_tile_mapping<block_m, block_n>(tile_id, grid_m, grid_n, &block_row, &block_col);
+    }
 
     // Shared memory allocation
     __shared__ T lds_mem[2 * lds_size];
@@ -165,11 +170,19 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
     // Initial tile loading
     if(tid < half_block)
     {
-        load_to_shared<LAYOUT_A, half_block, block_m, block_k>(a_tiles_0, A_tile_ptr, M, K, cid);
+        load_to_shared<m_input::matrix_a, LAYOUT_A, half_block, block_m, block_k>(a_tiles_0,
+                                                                                  A_tile_ptr,
+                                                                                  M,
+                                                                                  K,
+                                                                                  cid);
     }
     else
     {
-        load_to_shared<LAYOUT_B, half_block, block_k, block_n>(b_tiles_0, B_tile_ptr, K, N, cid);
+        load_to_shared<m_input::matrix_b, LAYOUT_B, half_block, block_k, block_n>(b_tiles_0,
+                                                                                  B_tile_ptr,
+                                                                                  K,
+                                                                                  N,
+                                                                                  cid);
     }
 
     __syncthreads();
@@ -183,41 +196,28 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
     const int global_mult_A = (LAYOUT_A == m_layout::col_major) ? M : 1;
     const int global_mult_B = (LAYOUT_B == m_layout::col_major) ? 1 : N;
 
-    constexpr int frag_mult_A = (LAYOUT_A == m_layout::col_major) ? 1 : block_k;
-    constexpr int frag_mult_B = (LAYOUT_B == m_layout::col_major) ? block_k : 1;
-
-    constexpr int shared_mult_A = (LAYOUT_A == m_layout::col_major) ? block_m : 1;
-    constexpr int shared_mult_B = (LAYOUT_B == m_layout::col_major) ? 1 : block_n;
-
     // Main computation loop
     for(int k_tile = 0; k_tile < K; k_tile += block_k)
     {
         // Prefetch next tiles
-        if(k_tile + block_k < K)
+        if(k_tile + block_k < K && tid >= half_block)
         {
-            if(tid < half_block)
-            {
-                const T* next_A = A_tile_ptr + block_k * global_mult_A;
-                load_to_shared<LAYOUT_A, half_block, block_m, block_k>(next_a, next_A, M, K, cid);
-            }
-            else
-            {
-                const T* next_B = B_tile_ptr + block_k * global_mult_B;
-                load_to_shared<LAYOUT_B, half_block, block_k, block_n>(next_b, next_B, K, N, cid);
-            }
+            const T* next_A = A_tile_ptr + block_k * global_mult_A;
+            load_to_shared<m_input::matrix_a, LAYOUT_A, half_block, block_m, block_k>(next_a,
+                                                                                      next_A,
+                                                                                      M,
+                                                                                      K,
+                                                                                      cid);
         }
-
-        const int thread_a_base = warp_base_row + thread_row_in_warp * thread_tile_m;
-        const int thread_b_base = warp_base_col + thread_col_in_warp * thread_tile_n;
-
-        const T* curr_a = current_a + thread_a_base * frag_mult_A;
-        const T* curr_b = current_b + thread_b_base * frag_mult_B;
 
         // Compute on current tile
         for(int k_offset = 0; k_offset < block_k; ++k_offset)
         {
-            const T* a_ptr = curr_a;
-            const T* b_ptr = curr_b;
+            const int thread_a_base = warp_base_row + thread_row_in_warp * thread_tile_m;
+            const int thread_b_base = warp_base_col + thread_col_in_warp * thread_tile_n;
+
+            const T* a_ptr = current_a + k_offset * block_m + thread_a_base;
+            const T* b_ptr = current_b + k_offset * block_n + thread_b_base;
 
             if constexpr(warp_tile_m_count < warp_tile_n_count)
             {
@@ -225,40 +225,34 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                 {
                     if(wn < warp_tile_m_count)
                     {
-                        load_matrix<m_input::matrix_a, LAYOUT_A>(a_frag[wn],
-                                                                 a_ptr,
-                                                                 block_m,
-                                                                 block_k);
+                        load_matrix(a_frag[wn], a_ptr, block_m, block_k);
                     }
-                    load_matrix<m_input::matrix_b, LAYOUT_B>(b_frag[wn], b_ptr, block_k, block_n);
-                    a_ptr += sub_tile_m * frag_mult_A;
-                    b_ptr += sub_tile_n * frag_mult_B;
+                    load_matrix(b_frag[wn], b_ptr, block_k, block_n);
+                    a_ptr += sub_tile_m;
+                    b_ptr += sub_tile_n;
                 }
             }
             else if constexpr(warp_tile_m_count > warp_tile_n_count)
             {
                 for(int wm = 0; wm < warp_tile_m_count; ++wm)
                 {
-                    load_matrix<m_input::matrix_a, LAYOUT_A>(a_frag[wm], a_ptr, block_m, block_k);
+                    load_matrix(a_frag[wm], a_ptr, block_m, block_k);
                     if(wm < warp_tile_n_count)
                     {
-                        load_matrix<m_input::matrix_b, LAYOUT_B>(b_frag[wm],
-                                                                 b_ptr,
-                                                                 block_k,
-                                                                 block_n);
+                        load_matrix(b_frag[wm], b_ptr, block_k, block_n);
                     }
-                    a_ptr += sub_tile_m * frag_mult_A;
-                    b_ptr += sub_tile_n * frag_mult_B;
+                    a_ptr += sub_tile_m;
+                    b_ptr += sub_tile_n;
                 }
             }
             else if constexpr(warp_tile_m_count == warp_tile_n_count)
             {
                 for(int wm = 0; wm < warp_tile_m_count; ++wm)
                 {
-                    load_matrix<m_input::matrix_a, LAYOUT_A>(a_frag[wm], a_ptr, block_m, block_k);
-                    load_matrix<m_input::matrix_b, LAYOUT_B>(b_frag[wm], b_ptr, block_k, block_n);
-                    a_ptr += sub_tile_m * frag_mult_A;
-                    b_ptr += sub_tile_n * frag_mult_B;
+                    load_matrix(a_frag[wm], a_ptr, block_m, block_k);
+                    load_matrix(b_frag[wm], b_ptr, block_k, block_n);
+                    a_ptr += sub_tile_m;
+                    b_ptr += sub_tile_n;
                 }
             }
 
@@ -279,9 +273,16 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                     }
                 }
             }
+        }
 
-            curr_a += shared_mult_A;
-            curr_b += shared_mult_B;
+        if(k_tile + block_k < K && tid < half_block)
+        {
+            const T* next_B = B_tile_ptr + block_k * global_mult_B;
+            load_to_shared<m_input::matrix_b, LAYOUT_B, half_block, block_k, block_n>(next_b,
+                                                                                      next_B,
+                                                                                      K,
+                                                                                      N,
+                                                                                      cid);
         }
 
         // Advance pointers and swap buffers
@@ -317,10 +318,14 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                     for(int tn = 0; tn < thread_tile_n; ++tn)
                     {
                         const int global_col = col_offset + tile_col_base + tn;
-                        const int c_index    = (LAYOUT_C == m_layout::col_major)
-                                                   ? (global_col * M + global_row)
-                                                   : (global_row * N + global_col);
-                        C[c_index]           = c_frag[wm][wn][offset + tn];
+                        if constexpr(LAYOUT_C == m_layout::col_major)
+                        {
+                            C[global_col * M + global_row] = c_frag[wm][wn][offset + tn];
+                        }
+                        else
+                        {
+                            C[global_row * N + global_col] = c_frag[wm][wn][offset + tn];
+                        }
                     }
                 }
             }
@@ -344,10 +349,14 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                         const int global_col = col_offset + tile_col_base + tn;
                         if(global_row < M && global_col < N)
                         {
-                            const int c_index = (LAYOUT_C == m_layout::col_major)
-                                                    ? (global_col * M + global_row)
-                                                    : (global_row * N + global_col);
-                            C[c_index]        = c_frag[wm][wn][offset + tn];
+                            if constexpr(LAYOUT_C == m_layout::col_major)
+                            {
+                                C[global_col * M + global_row] = c_frag[wm][wn][offset + tn];
+                            }
+                            else
+                            {
+                                C[global_row * N + global_col] = c_frag[wm][wn][offset + tn];
+                            }
                         }
                     }
                 }
