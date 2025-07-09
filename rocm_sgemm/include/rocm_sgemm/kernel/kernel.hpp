@@ -226,9 +226,9 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                     if(wn < warp_tile_m_count)
                     {
                         load_matrix(a_frag[wn], a_ptr, block_m, block_k);
+                        a_ptr += sub_tile_m;
                     }
                     load_matrix(b_frag[wn], b_ptr, block_k, block_n);
-                    a_ptr += sub_tile_m;
                     b_ptr += sub_tile_n;
                 }
             }
@@ -240,9 +240,9 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                     if(wm < warp_tile_n_count)
                     {
                         load_matrix(b_frag[wm], b_ptr, block_k, block_n);
+                        b_ptr += sub_tile_n;
                     }
                     a_ptr += sub_tile_m;
-                    b_ptr += sub_tile_n;
                 }
             }
             else if constexpr(warp_tile_m_count == warp_tile_n_count)
