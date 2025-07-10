@@ -152,10 +152,34 @@ public:
 template<class T, int TILE>
 __device__ __forceinline__ void load_matrix(fragment<T, TILE>& frag, const T* data, int M, int N)
 {
-    auto& tmp = frag.get();
-    for(int i = 0; i < TILE; ++i)
+    constexpr int max_load_width    = 8;
+    constexpr int tile_bytes        = TILE * sizeof(T);
+    constexpr int actual_load_width = (tile_bytes >= 32)   ? max_load_width
+                                      : (tile_bytes >= 16) ? 4
+                                      : (tile_bytes >= 8)  ? 2
+                                                           : 1;
+
+    if constexpr(actual_load_width == 1)
     {
-        tmp[i] = data[i];
+        auto& tmp = frag.get();
+        for(int i = 0; i < TILE; ++i)
+        {
+            tmp[i] = data[i];
+        }
+    }
+    else
+    {
+        using vector_type          = float __attribute__((ext_vector_type(actual_load_width)));
+        constexpr int vector_width = (sizeof(vector_type) / sizeof(T));
+        constexpr int width        = (TILE + vector_width - 1) / vector_width;
+
+        const vector_type* src_ptr  = reinterpret_cast<const vector_type*>(data);
+        vector_type*       dest_ptr = reinterpret_cast<vector_type*>(&frag.get());
+
+        for(int i = 0; i < width; ++i)
+        {
+            dest_ptr[i] = src_ptr[i];
+        }
     }
 }
 

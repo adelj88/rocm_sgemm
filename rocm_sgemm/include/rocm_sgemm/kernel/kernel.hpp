@@ -259,13 +259,14 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
             // Compute outer products
             for(int wm = 0; wm < warp_tile_m_count; ++wm)
             {
-                for(int tm = 0; tm < thread_tile_m; ++tm)
+                for(int wn = 0; wn < warp_tile_n_count; ++wn)
                 {
-                    T         a_val  = a_frag[wm][tm];
-                    const int offset = tm * thread_tile_n;
-                    for(int wn = 0; wn < warp_tile_n_count; ++wn)
+                    auto& dest_ptr = c_frag[wm][wn].get();
+                    for(int tm = 0; tm < thread_tile_m; ++tm)
                     {
-                        auto& dest_ptr = c_frag[wm][wn].get();
+                        T         a_val  = a_frag[wm][tm];
+                        const int offset = tm * thread_tile_n;
+
                         for(int tn = 0; tn < thread_tile_n; ++tn)
                         {
                             dest_ptr[offset + tn] += a_val * b_frag[wn][tn];

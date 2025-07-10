@@ -1,4 +1,31 @@
-#!/usr/bin/env python3
+def tune_abc_layout(self, M, N, K, layout_a, layout_b, layout_c, max_evaluations=150):
+        """Tune for (A,B,C) layout combination using Optuna TPE."""
+        layout_names = {0: "r", 1: "c"}
+        print(f"\nTuning {M}×{N}×{K} with layout A={layout_names[layout_a]}, B={layout_names[layout_b]}, C={layout_names[layout_c]}")
+        print("Using Optuna TPE (Tree-structured Parzen Estimators)")
+
+        # Reset state for this problem
+        self.current_problem = (M, N, K, layout_a, layout_b, layout_c)
+        self.total_evaluations = 0
+        self.best_config = None
+        self.best_time = float('inf')
+        self.improvement_history = []
+
+        # Create Optuna study
+        study = optuna.create_study(
+            direction='minimize',
+            sampler=optuna.samplers.TPESampler(
+                seed=self.random_seed,
+                n_startup_trials=min(10, max_evaluations // 4),
+                n_ei_candidates=24,
+                multivariate=True
+            )
+        )
+
+        print("Starting Optuna optimization...")
+
+        # Enqueue baseline configurations first
+        baseline#!/usr/bin/env python3
 
 import subprocess
 import json
@@ -31,6 +58,8 @@ class OptunaTuner:
                 (128, 128, 128, 8, 4, 4, 2, 4, 4),  # threads_n=4 variant
                 (256, 128, 128, 8, 2, 2, 4, 4, 4),  # Different block size
                 (128, 128, 128, 8, 4, 1, 8, 4, 16), # Random blocks
+                (128, 128, 128, 8, 1, 4, 8, 4, 8),  # Random blocks
+                (128, 128, 128, 8, 2, 2, 8, 4, 8),  # Random blocks
                 (128, 128, 128, 16, 1, 4, 8, 4, 8), # Random blocks
                 (256, 128, 256, 8, 4, 1, 8, 4, 16), # Random blocks
                 (256, 128, 64, 16, 1, 1, 4, 8, 2),  # Random blocks
@@ -45,7 +74,7 @@ class OptunaTuner:
             'block_size': [64, 128, 256, 512],
             'block_m': [32, 64, 128, 256],
             'block_n': [32, 64, 128, 256],
-            'block_k': [2, 4, 8, 16, 32],
+            'block_k': [4, 8, 16, 32],
             'warp_tile_m_count': [1, 2, 4, 8],
             'warp_tile_n_count': [1, 2, 4, 8],
             'thread_tile_m': [1, 2, 4, 8],
@@ -55,6 +84,7 @@ class OptunaTuner:
 
         # Generate all valid configurations for sampling
         self.valid_configs = self._generate_valid_configs()
+        self.filtered_param_space = self._create_filtered_parameter_space()
         print(f"Generated {len(self.valid_configs)} valid configurations")
 
         # State tracking
@@ -63,6 +93,27 @@ class OptunaTuner:
         self.best_config = None
         self.best_time = float('inf')
         self.improvement_history = []
+
+    def _create_filtered_parameter_space(self):
+        """Create parameter space containing only values that appear in valid configurations."""
+        filtered_space = {}
+
+        # Extract unique values for each parameter from valid configs
+        filtered_space['block_size'] = sorted(list(set(config[0] for config in self.valid_configs)))
+        filtered_space['block_m'] = sorted(list(set(config[1] for config in self.valid_configs)))
+        filtered_space['block_n'] = sorted(list(set(config[2] for config in self.valid_configs)))
+        filtered_space['block_k'] = sorted(list(set(config[3] for config in self.valid_configs)))
+        filtered_space['warp_tile_m_count'] = sorted(list(set(config[4] for config in self.valid_configs)))
+        filtered_space['warp_tile_n_count'] = sorted(list(set(config[5] for config in self.valid_configs)))
+        filtered_space['thread_tile_m'] = sorted(list(set(config[6] for config in self.valid_configs)))
+        filtered_space['thread_tile_n'] = sorted(list(set(config[7] for config in self.valid_configs)))
+        filtered_space['threads_n'] = sorted(list(set(config[8] for config in self.valid_configs)))
+
+        print("Filtered parameter space:")
+        for param, values in filtered_space.items():
+            print(f"  {param}: {values}")
+
+        return filtered_space
 
     def _generate_valid_configs(self):
         """Generate all valid discrete configurations."""
@@ -171,13 +222,29 @@ class OptunaTuner:
         except Exception:
             return float('inf')
 
-    def _objective_function(self, trial):
-        """Optuna objective function - samples from pre-filtered valid configurations."""
-        # Sample directly from valid configurations
-        config_idx = trial.suggest_int('config_idx', 0, len(self.valid_configs) - 1)
-        config = self.valid_configs[config_idx]
+    def _objective_function_with_params(self, trial):
+        """Optuna objective function that works with actual parameters and prunes invalid configs."""
+        # Get parameters suggested by Optuna
+        block_size = trial.suggest_categorical('block_size', self.param_space['block_size'])
+        block_m = trial.suggest_categorical('block_m', self.param_space['block_m'])
+        block_n = trial.suggest_categorical('block_n', self.param_space['block_n'])
+        block_k = trial.suggest_categorical('block_k', self.param_space['block_k'])
+        warp_tile_m_count = trial.suggest_categorical('warp_tile_m_count', self.param_space['warp_tile_m_count'])
+        warp_tile_n_count = trial.suggest_categorical('warp_tile_n_count', self.param_space['warp_tile_n_count'])
+        thread_tile_m = trial.suggest_categorical('thread_tile_m', self.param_space['thread_tile_m'])
+        thread_tile_n = trial.suggest_categorical('thread_tile_n', self.param_space['thread_tile_n'])
+        threads_n = trial.suggest_categorical('threads_n', self.param_space['threads_n'])
 
-        # All configs are guaranteed valid - no constraint checking needed
+        config = (block_size, block_m, block_n, block_k,
+                  warp_tile_m_count, warp_tile_n_count,
+                  thread_tile_m, thread_tile_n, threads_n)
+
+        # Check constraints - if invalid, PRUNE the trial (don't count it)
+        if not self._check_constraints(config):
+            trial.set_user_attr("invalid_combination", True)
+            raise optuna.TrialPruned("Invalid parameter combination")
+
+        # Evaluate the valid configuration
         M, N, K, layout_a, layout_b, layout_c = self.current_problem
         time_ms = self._evaluate_config(M, N, K, layout_a, layout_b, layout_c, config)
 
@@ -190,7 +257,6 @@ class OptunaTuner:
             self.improvement_history.append(self.total_evaluations)
             print(f"  New best: {config} -> {time_ms:.3f}ms (trial {self.total_evaluations})")
         elif time_ms == self.best_time and self.best_time != float('inf'):
-            # Equal performance - update to newer config
             self.best_config = config
             print(f"  New best: {config} -> {time_ms:.3f}ms (equal, trial {self.total_evaluations})")
         else:
@@ -198,54 +264,8 @@ class OptunaTuner:
 
         return time_ms
 
-    def _add_baseline_trials(self, study):
-        """Add baseline configurations as initial trials."""
-        print("Adding baseline configurations...")
-        for i, baseline in enumerate(self.baselines):
-            if self._check_constraints(baseline):
-                try:
-                    # Create trial with baseline parameters
-                    trial = optuna.trial.create_trial(
-                        params={
-                            'block_size': baseline[0],
-                            'block_m': baseline[1],
-                            'block_n': baseline[2],
-                            'block_k': baseline[3],
-                            'warp_tile_m_count': baseline[4],
-                            'warp_tile_n_count': baseline[5],
-                            'thread_tile_m': baseline[6],
-                            'thread_tile_n': baseline[7],
-                            'threads_n': baseline[8]
-                        },
-                        value=self._objective_function_for_baseline(baseline)
-                    )
-                    study.add_trial(trial)
-                    print(f"  Added baseline {i+1}: {baseline}")
-                except Exception as e:
-                    print(f"  Failed to add baseline {baseline}: {e}")
 
-    def _objective_function_for_baseline(self, config):
-        """Evaluate baseline configuration."""
-        M, N, K, layout_a, layout_b, layout_c = self.current_problem
-        time_ms = self._evaluate_config(M, N, K, layout_a, layout_b, layout_c, config)
-
-        self.total_evaluations += 1
-
-        if time_ms < self.best_time:
-            self.best_time = time_ms
-            self.best_config = config
-            self.improvement_history.append(self.total_evaluations)
-            print(f"  Baseline result: {config} -> {time_ms:.3f}ms")
-        elif time_ms == self.best_time and self.best_time != float('inf'):
-            # Equal performance - update to newer config
-            self.best_config = config
-            print(f"  Baseline result: {config} -> {time_ms:.3f}ms (equal)")
-        else:
-            print(f"  Baseline result: {config} -> {time_ms:.3f}ms")
-
-        return time_ms
-
-    def tune_abc_layout(self, M, N, K, layout_a, layout_b, layout_c, max_evaluations=70):
+    def tune_abc_layout(self, M, N, K, layout_a, layout_b, layout_c, max_evaluations=150):
         """Tune for (A,B,C) layout combination using Optuna TPE."""
         layout_names = {0: "r", 1: "c"}
         print(f"\nTuning {M}×{N}×{K} with layout A={layout_names[layout_a]}, B={layout_names[layout_b]}, C={layout_names[layout_c]}")
@@ -263,7 +283,7 @@ class OptunaTuner:
             direction='minimize',
             sampler=optuna.samplers.TPESampler(
                 seed=self.random_seed,
-                n_startup_trials=min(10, max_evaluations // 4),  # Use baselines + random for startup
+                n_startup_trials=min(10, max_evaluations // 4),
                 n_ei_candidates=24,
                 multivariate=True
             )
@@ -271,20 +291,27 @@ class OptunaTuner:
 
         print("Starting Optuna optimization...")
 
-        # Add baseline configurations first
-        baseline_budget = min(len(self.baselines), max_evaluations // 3)
-        for i, baseline in enumerate(self.baselines[:baseline_budget]):
-            if baseline in self.valid_configs:
-                # Find index of baseline in valid configs
-                baseline_idx = self.valid_configs.index(baseline)
+        # Add baseline configurations
+        for i, baseline in enumerate(self.baselines):
+            if self._check_constraints(baseline):
+                (block_size, block_m, block_n, block_k,
+                 warp_tile_m_count, warp_tile_n_count,
+                 thread_tile_m, thread_tile_n, threads_n) = baseline
 
-                # Enqueue trial with the config index
-                study.enqueue_trial({'config_idx': baseline_idx})
+                study.enqueue_trial({
+                    'block_size': block_size,
+                    'block_m': block_m,
+                    'block_n': block_n,
+                    'block_k': block_k,
+                    'warp_tile_m_count': warp_tile_m_count,
+                    'warp_tile_n_count': warp_tile_n_count,
+                    'thread_tile_m': thread_tile_m,
+                    'thread_tile_n': thread_tile_n,
+                    'threads_n': threads_n
+                })
 
-        # Run remaining optimization trials
-        remaining_trials = max_evaluations - self.total_evaluations
-        if remaining_trials > 0:
-            study.optimize(self._objective_function, n_trials=remaining_trials, show_progress_bar=False)
+        # Run optimization - invalid configs will be pruned automatically
+        study.optimize(self._objective_function_with_params, n_trials=max_evaluations, show_progress_bar=False)
 
         if self.best_config is None:
             print("  No valid configuration found!")
@@ -297,11 +324,16 @@ class OptunaTuner:
         lds_size = (block_m * block_k) + (block_k * block_n)
         memory_used = 2 * lds_size * 4
 
+        # Count only completed (non-pruned) trials
+        completed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+        pruned_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED])
+
         coverage = (self.total_evaluations / len(self.valid_configs)) * 100
         print(f"  Best config: {self.best_config} -> {self.best_time:.3f}ms")
         print(f"  Memory usage: {memory_used}/{self.max_shared_memory} bytes")
         print(f"  Improvements found: {len(self.improvement_history)}")
-        print(f"  Total evaluations: {self.total_evaluations}/{max_evaluations}")
+        print(f"  Valid evaluations: {self.total_evaluations}")
+        print(f"  Completed trials: {completed_trials}, Pruned trials: {pruned_trials}")
         print(f"  Space coverage: {coverage:.2f}%")
 
         return {
@@ -322,7 +354,7 @@ class OptunaTuner:
             'space_coverage_percent': coverage
         }
 
-    def tune_all(self, sizes=None, abc_layouts=None, max_evaluations=70):
+    def tune_all(self, sizes=None, abc_layouts=None, max_evaluations=150):
         """Tune all size and (A,B,C) layout combinations."""
         if sizes is None:
             sizes = [
@@ -453,8 +485,8 @@ Examples:
                        help='Matrix (A,B,C) layouts as A,B,C (e.g., r,r,r c,c,c or row_major,col_major,row_major)')
     parser.add_argument('--baselines', nargs='*',
                        help='Baseline configs as block_size,block_m,block_n,block_k,warp_tile_m_count,warp_tile_n_count,thread_tile_m,thread_tile_n,threads_n')
-    parser.add_argument('--budget', type=int, default=70,
-                       help='Evaluation budget per (A,B,C) layout combination (default: 70)')
+    parser.add_argument('--budget', type=int, default=150,
+                       help='Evaluation budget per (A,B,C) layout combination (default: 150)')
     parser.add_argument('--seed', type=int, default=42,
                        help='Random seed for reproducible results (default: 42)')
     parser.add_argument('--gpu-arch', default='gfx1100', help='GPU architecture (default: gfx1100)')
