@@ -6,7 +6,36 @@ This repository provides a standalone, high-performance General Matrix Multiplic
 This repository aims to:
 - Provide a focused, high-performance GEMM kernel for single-precision floating-point operations (SGEMM).
 - Explore and implement support for various matrix data layouts (e.g., row-major, column-major, potentially tiled formats).
+- Provide a benchmarking executable that shows the average, maximum and minimum time for a kernel run, along with the average TFLOPs
 - Tune the GEMM kernel for different M, N, K sizes
+
+## Overview
+
+This implementation was inspired by several key sources and observations:
+
+* **Previous WMMA work**: Building on experience from a GEMM implementation of mine [rocm_wmma_gemm](https://github.com/adelj88/rocm_wmma_gemm) that leveraged WMMA instructions and focused on FP16, while achieving good results against rocBLAS
+* **Sebastien Vince's research**: Heavily influenced by the excellent article ["Deep Dive into Matrix Optimization on AMD GPUs"](https://seb-v.github.io/optimization/update/2025/01/20/Fast-GPU-Matrix-multiplication.html) where he achieved impressive SGEMM performance through hand-tuned ISA optimizations for 4096×4096×4096 row-major matrices on a 7900 XTX
+
+### Breaking the HIP C++ Performance Barrier
+
+Testing all implementations on the same hardware (AMD 7900 GRE) using minimum execution times following Sebastien's benchmarking methodology (which involves identity matrix-multiplication) for direct comparison (all matrices are row-major):
+
+![SGEMM Performance Comparison](docs/sgemm_line_comparison.png)
+
+| Implementation | Description | Time (ms) | Performance (GFLOPS) | vs rocBLAS |
+|----------------|-------------|-----------|---------------------|-------------|
+| rocBLAS | Baseline | 5.88 | 23.4 | 100.0% |
+| Sebastien K5 | LDS Optimization (HIP C++) | 5.49 | 25.0 | 106.8% |
+| Sebastien K6 | VALU Optimization (ISA) | 4.79 | 28.7 | 122.6% |
+| Sebastien K7 | Loop Unrolling (ISA) | 4.58 | 30.0 | 128.2% |
+| Sebastien K8 | GMEM + Algorithmic (ISA) | 4.02 | 34.2 | 146.2% |
+| **rocm_sgemm** | **HIP C++ Optimized** | **4.55** | **30.2** | **129.1%** |
+
+*Note that average execution times typically provide more realistic performance indicators for practical applications.*
+
+**Key Finding**: `rocm_sgemm` matches Sebastien's hand-tuned ISA Kernel 7 performance, proving that the perceived "HIP C++ limitation" can be overcome with the right optimization techniques, while maintaining portability across GPU architectures.
+
+While Sebastien noted that his performance gains "would not have been possible using only HIP C++," `rocm_sgemm` demonstrates that there's still significant optimization potential within the HIP C++ framework. By carefully applying advanced optimization techniques, it's possible to achieve competitive performance while preserving portability and maintainability across different GPU architectures.
 
 ## Building the Project
 
