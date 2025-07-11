@@ -108,8 +108,7 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
     const int tile_id = blockIdx.x;
 
     constexpr bool use_hilbert
-        = (LAYOUT_A == m_layout::row_major && LAYOUT_B == m_layout::col_major)
-          || (LAYOUT_A == m_layout::col_major && LAYOUT_B == m_layout::col_major);
+        = !(LAYOUT_A == m_layout::row_major && LAYOUT_B == m_layout::row_major);
 
     int block_row, block_col;
     if constexpr(use_hilbert)

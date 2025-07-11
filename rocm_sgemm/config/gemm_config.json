@@ -127,14 +127,14 @@
                 "C": "col_major"
             },
             "config": {
-                "block_size": 128,
-                "block_m": 64,
+                "block_size": 256,
+                "block_m": 128,
                 "block_n": 128,
                 "block_k": 16,
                 "warp_tile_m_count": 1,
-                "warp_tile_n_count": 2,
+                "warp_tile_n_count": 8,
                 "thread_tile_m": 8,
-                "thread_tile_n": 4,
+                "thread_tile_n": 1,
                 "threads_n": 8
             }
         },
@@ -154,11 +154,11 @@
                 "block_m": 128,
                 "block_n": 128,
                 "block_k": 16,
-                "warp_tile_m_count": 4,
-                "warp_tile_n_count": 1,
+                "warp_tile_m_count": 2,
+                "warp_tile_n_count": 2,
                 "thread_tile_m": 8,
                 "thread_tile_n": 4,
-                "threads_n": 16
+                "threads_n": 8
             }
         },
         {
@@ -296,7 +296,7 @@
                 "warp_tile_n_count": 8,
                 "thread_tile_m": 4,
                 "thread_tile_n": 2,
-                "threads_n": 8
+                "threads_n": 16
             }
         },
         {
@@ -319,7 +319,7 @@
                 "warp_tile_n_count": 8,
                 "thread_tile_m": 4,
                 "thread_tile_n": 2,
-                "threads_n": 4
+                "threads_n": 8
             }
         },
         {
@@ -472,12 +472,12 @@
                 "C": "row_major"
             },
             "config": {
-                "block_size": 256,
-                "block_m": 256,
+                "block_size": 128,
+                "block_m": 128,
                 "block_n": 128,
                 "block_k": 8,
-                "warp_tile_m_count": 1,
-                "warp_tile_n_count": 4,
+                "warp_tile_m_count": 2,
+                "warp_tile_n_count": 2,
                 "thread_tile_m": 8,
                 "thread_tile_n": 4,
                 "threads_n": 8
@@ -498,7 +498,7 @@
                 "block_size": 128,
                 "block_m": 128,
                 "block_n": 128,
-                "block_k": 4,
+                "block_k": 8,
                 "warp_tile_m_count": 2,
                 "warp_tile_n_count": 2,
                 "thread_tile_m": 8,
@@ -687,7 +687,7 @@
                 "warp_tile_n_count": 8,
                 "thread_tile_m": 4,
                 "thread_tile_n": 2,
-                "threads_n": 4
+                "threads_n": 8
             }
         },
         {
