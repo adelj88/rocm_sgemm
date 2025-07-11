@@ -212,6 +212,44 @@ __device__ __forceinline__ void
     }
 }
 
+/**
+  * @brief Snake/boustrophedon mapping - alternates row direction
+  *
+  * Processes rows sequentially but alternates direction (left-to-right,
+  * then right-to-left). Provides perfect cache locality within rows
+  * and good locality between adjacent rows.
+  *
+  * @param[in]  tile_id    Linear block ID
+  * @param[in]  grid_m     Number of blocks in M dimension
+  * @param[in]  grid_n     Number of blocks in N dimension
+  * @param[out] block_row  Computed block row (M dimension)
+  * @param[out] block_col  Computed block column (N dimension)
+  */
+template<int BLOCK_M, int BLOCK_N>
+__device__ __forceinline__ void
+    snake_tile_mapping(int tile_id, int grid_m, int grid_n, int* block_row, int* block_col)
+{
+    // Check bounds
+    int total_tiles = grid_m * grid_n;
+    if(tile_id >= total_tiles)
+    {
+        *block_row = 0;
+        *block_col = 0;
+        return;
+    }
+
+    // Calculate row and position within row
+    int row        = tile_id / grid_n;
+    int pos_in_row = tile_id % grid_n;
+
+    // Alternate direction for odd rows
+    int col = (row & 1) ? (grid_n - 1 - pos_in_row) : pos_in_row;
+
+    // Convert to actual block coordinates
+    *block_row = row * BLOCK_M;
+    *block_col = col * BLOCK_N;
+}
+
 } // namespace rocm_sgemm
 
 #endif // ROCM_SGEMM_MAPPING_HPP

@@ -410,24 +410,8 @@ void run_kernel_benchmark(benchmark::State& state)
     const int grid_m = (M + g_config.block_m - 1) / g_config.block_m;
     const int grid_n = (N + g_config.block_n - 1) / g_config.block_n;
 
-    dim3 grid_dim(grid_n, grid_m);
+    dim3 grid_dim(grid_n * grid_m);
     dim3 block_dim(g_config.block_size);
-
-    bool swap_blocks = (g_config.layout_a == 1 && g_config.layout_b == 1);
-
-    bool use_hilbert = (g_config.layout_a == 1 && g_config.layout_b == 0)
-                       || (g_config.layout_a == 0 && g_config.layout_b == 1);
-
-    if(swap_blocks)
-    {
-        grid_dim.x = grid_m;
-        grid_dim.y = grid_n;
-    }
-    else if(use_hilbert)
-    {
-        grid_dim.x = grid_n * grid_m;
-        grid_dim.y = 1;
-    }
 
     gpu_timer timer;
 

@@ -20,26 +20,8 @@ __host__ void gemm(float* C, float* A, float* B, size_t M, size_t N, size_t K, h
     int grid_m = (M + block_m - 1) / block_m;
     int grid_n = (N + block_n - 1) / block_n;
 
-    dim3 grid_dim(grid_n, grid_m);
+    dim3 grid_dim(grid_n * grid_m);
     dim3 block_dim(params.block_size);
-
-    constexpr bool swap_blocks
-        = (layout_A == m_layout::col_major && layout_B == m_layout::col_major);
-
-    constexpr bool use_hilbert
-        = (layout_A == m_layout::col_major && layout_B == m_layout::row_major)
-          || (layout_A == m_layout::row_major && layout_B == m_layout::col_major);
-
-    if constexpr(swap_blocks)
-    {
-        grid_dim.x = grid_m;
-        grid_dim.y = grid_n;
-    }
-    else if constexpr(use_hilbert)
-    {
-        grid_dim.x = grid_n * grid_m;
-        grid_dim.y = 1;
-    }
 
     // Launch kernel using the template launcher
     kernel_launcher<float, layout_C, layout_A, layout_B>::launch(params,

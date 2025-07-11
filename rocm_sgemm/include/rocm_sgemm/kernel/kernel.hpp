@@ -103,32 +103,22 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
     constexpr int lds_size = (block_m * block_k) + (block_k * block_n);
 
     // Block coordinates
-    constexpr bool swap_blocks
-        = (LAYOUT_A == m_layout::col_major && LAYOUT_B == m_layout::col_major);
+    const int grid_m  = (M + block_m - 1) / block_m;
+    const int grid_n  = (N + block_n - 1) / block_n;
+    const int tile_id = blockIdx.x;
 
     constexpr bool use_hilbert
-        = (LAYOUT_A == m_layout::col_major && LAYOUT_B == m_layout::row_major)
-          || (LAYOUT_A == m_layout::row_major && LAYOUT_B == m_layout::col_major);
+        = (LAYOUT_A == m_layout::row_major && LAYOUT_B == m_layout::col_major)
+          || (LAYOUT_A == m_layout::col_major && LAYOUT_B == m_layout::col_major);
 
     int block_row, block_col;
-    if constexpr(swap_blocks)
+    if constexpr(use_hilbert)
     {
-        block_row = blockIdx.x * block_m;
-        block_col = blockIdx.y * block_n;
-    }
-    else if constexpr(use_hilbert)
-    {
-        const int grid_m  = (M + block_m - 1) / block_m;
-        const int grid_n  = (N + block_n - 1) / block_n;
-        const int tile_id = blockIdx.x;
-
-        // Get block coordinates using hilbert mapping
         hilbert_tile_mapping<block_m, block_n>(tile_id, grid_m, grid_n, &block_row, &block_col);
     }
     else
     {
-        block_row = blockIdx.y * block_m;
-        block_col = blockIdx.x * block_n;
+        snake_tile_mapping<block_m, block_n>(tile_id, grid_m, grid_n, &block_row, &block_col);
     }
 
     // Shared memory allocation
