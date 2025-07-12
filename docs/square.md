@@ -2,7 +2,7 @@
 
 Performance measured on AMD Radeon RX 7900 GRE on WSL2 (Ubuntu 24.04.1 LTS, ROCm 6.4.1) in TFLOPs.
 
-| Matrix Size    | Input Layout (A,B) | `rocm_wmma_gemm`<br>(C=col) | `rocBLAS`<br>(C=col) | Ratio<br>(C=col / rocBLAS) | `rocm_wmma_gemm`<br>(C=row) | Ratio<br>(C=row / rocBLAS) |
+| Matrix Size    | Input Layout (A,B) | `rocm_sgemm`<br>(C=col)    | `rocBLAS`<br>(C=col)| Ratio<br>(C=col / rocBLAS)| `rocm_sgemm`<br>(C=row)    | Ratio<br>(C=row / rocBLAS)|
 |:---------------|:-------------------|---------------------------:|--------------------:|--------------------------:|---------------------------:|--------------------------:|
 | 1024×1024×1024 | col, col           |                      11.08 |               11.78 |                      0.94 |                      12.10 |                      1.03 |
 | 1024×1024×1024 | row, col           |                       9.60 |               11.53 |                      0.83 |                      10.29 |                      0.89 |

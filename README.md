@@ -16,13 +16,13 @@ This implementation was inspired by several key sources and observations:
 * **Previous WMMA work**: Building on experience from a GEMM implementation of mine [rocm_wmma_gemm](https://github.com/adelj88/rocm_wmma_gemm) that leveraged WMMA instructions and focused on FP16, while achieving good results against rocBLAS
 * **Sebastien Vince's research**: Heavily influenced by the excellent article ["Deep Dive into Matrix Optimization on AMD GPUs"](https://seb-v.github.io/optimization/update/2025/01/20/Fast-GPU-Matrix-multiplication.html) where he achieved impressive SGEMM performance through hand-tuned ISA optimizations for 4096×4096×4096 row-major matrices on a 7900 XTX
 
-### Breaking the HIP C++ Performance Barrier
+### Performance Analysis
 
 Testing all implementations on the same hardware (AMD 7900 GRE) using minimum execution times following Sebastien's benchmarking methodology (which involves identity matrix-multiplication) for direct comparison (all matrices are row-major):
 
 ![SGEMM Performance Comparison](docs/sgemm_line_comparison.png)
 
-| Implementation | Description | Time (ms) | Performance (GFLOPS) | vs rocBLAS |
+| Implementation | Description | Time (ms) | Performance (TFLOPS) | vs rocBLAS |
 |----------------|-------------|-----------|---------------------|-------------|
 | rocBLAS | Baseline | 5.88 | 23.4 | 100.0% |
 | Sebastien K5 | LDS Optimization (HIP C++) | 5.49 | 25.0 | 106.8% |
@@ -36,6 +36,12 @@ Testing all implementations on the same hardware (AMD 7900 GRE) using minimum ex
 **Key Finding**: `rocm_sgemm` matches Sebastien's hand-tuned ISA Kernel 7 performance, proving that the perceived "HIP C++ limitation" can be overcome with the right optimization techniques, while maintaining portability across GPU architectures.
 
 While Sebastien noted that his performance gains "would not have been possible using only HIP C++," `rocm_sgemm` demonstrates that there's still significant optimization potential within the HIP C++ framework. By carefully applying advanced optimization techniques, it's possible to achieve competitive performance while preserving portability and maintainability across different GPU architectures.
+
+Below is a comparison against rocBLAS for different layout permutations and using regular matrix-multiplication (different input values).
+
+**Square Matrix Performance by Layout:**
+
+![WMMA Square Performance](docs/square.png)
 
 ## Building the Project
 
