@@ -117,7 +117,11 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
     }
     else
     {
-        snake_tile_mapping<block_m, block_n>(tile_id, grid_m, grid_n, &block_row, &block_col);
+        bit_reversal_swizzle_mapping<block_m, block_n>(tile_id,
+                                                       grid_m,
+                                                       grid_n,
+                                                       &block_row,
+                                                       &block_col);
     }
 
     // Shared memory allocation
@@ -301,6 +305,7 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
             for(int wn = 0; wn < warp_tile_n_count; ++wn)
             {
                 const int tile_col_base = wn * sub_tile_n;
+                auto&     dest_ptr      = c_frag[wm][wn].get();
                 for(int tm = 0; tm < thread_tile_m; ++tm)
                 {
                     const int offset     = tm * thread_tile_n;
@@ -310,11 +315,11 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                         const int global_col = col_offset + tile_col_base + tn;
                         if constexpr(LAYOUT_C == m_layout::col_major)
                         {
-                            C[global_col * M + global_row] = c_frag[wm][wn][offset + tn];
+                            C[global_col * M + global_row] = dest_ptr[offset + tn];
                         }
                         else
                         {
-                            C[global_row * N + global_col] = c_frag[wm][wn][offset + tn];
+                            C[global_row * N + global_col] = dest_ptr[offset + tn];
                         }
                     }
                 }
@@ -330,6 +335,7 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
             for(int wn = 0; wn < warp_tile_n_count; ++wn)
             {
                 const int tile_col_base = wn * sub_tile_n;
+                auto&     dest_ptr      = c_frag[wm][wn].get();
                 for(int tm = 0; tm < thread_tile_m; ++tm)
                 {
                     const int offset     = tm * thread_tile_n;
@@ -341,11 +347,11 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                         {
                             if constexpr(LAYOUT_C == m_layout::col_major)
                             {
-                                C[global_col * M + global_row] = c_frag[wm][wn][offset + tn];
+                                C[global_col * M + global_row] = dest_ptr[offset + tn];
                             }
                             else
                             {
-                                C[global_row * N + global_col] = c_frag[wm][wn][offset + tn];
+                                C[global_row * N + global_col] = dest_ptr[offset + tn];
                             }
                         }
                     }

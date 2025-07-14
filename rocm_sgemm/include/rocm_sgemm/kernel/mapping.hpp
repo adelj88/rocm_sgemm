@@ -130,15 +130,6 @@ template<int BLOCK_M, int BLOCK_N>
 __device__ __forceinline__ void
     hilbert_tile_mapping(int tile_id, int grid_m, int grid_n, int* block_row, int* block_col)
 {
-    // Check bounds
-    int total_tiles = grid_m * grid_n;
-    if(tile_id >= total_tiles)
-    {
-        *block_row = 0;
-        *block_col = 0;
-        return;
-    }
-
     // Special fast path for perfect power-of-two square grids
     if(grid_m == grid_n && (grid_m & (grid_m - 1)) == 0)
     {
@@ -213,11 +204,11 @@ __device__ __forceinline__ void
 }
 
 /**
-  * @brief Snake/boustrophedon mapping - alternates row direction
+  * @brief Bit-reversal swizzled mapping
   *
-  * Processes rows sequentially but alternates direction (left-to-right,
-  * then right-to-left). Provides perfect cache locality within rows
-  * and good locality between adjacent rows.
+  * Uses bit-reversal pattern for swizzling, which provides excellent
+  * memory distribution properties. The pattern is automatically
+  * determined by the grid dimensions.
   *
   * @param[in]  tile_id    Linear block ID
   * @param[in]  grid_m     Number of blocks in M dimension
@@ -226,24 +217,20 @@ __device__ __forceinline__ void
   * @param[out] block_col  Computed block column (N dimension)
   */
 template<int BLOCK_M, int BLOCK_N>
-__device__ __forceinline__ void
-    snake_tile_mapping(int tile_id, int grid_m, int grid_n, int* block_row, int* block_col)
+__device__ __forceinline__ void bit_reversal_swizzle_mapping(
+    int tile_id, int grid_m, int grid_n, int* block_row, int* block_col)
 {
-    // Check bounds
-    int total_tiles = grid_m * grid_n;
-    if(tile_id >= total_tiles)
-    {
-        *block_row = 0;
-        *block_col = 0;
-        return;
-    }
+    // Basic row-major calculation
+    int row = tile_id / grid_n;
+    int col = tile_id % grid_n;
 
-    // Calculate row and position within row
-    int row        = tile_id / grid_n;
-    int pos_in_row = tile_id % grid_n;
+    // Simple bit-reversal swizzle using row's lower bits
+    // Reverse the lower 3-4 bits of row to create swizzle offset
+    int row_bits = row & 7; // Take lower 3 bits
+    int reversed = ((row_bits & 1) << 2) | (row_bits & 2) | ((row_bits & 4) >> 2);
 
-    // Alternate direction for odd rows
-    int col = (row & 1) ? (grid_n - 1 - pos_in_row) : pos_in_row;
+    // Apply swizzle
+    col = (col + reversed) % grid_n;
 
     // Convert to actual block coordinates
     *block_row = row * BLOCK_M;
