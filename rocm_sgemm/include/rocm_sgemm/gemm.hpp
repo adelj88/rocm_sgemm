@@ -36,9 +36,9 @@ namespace rocm_sgemm
  * Launches a tiled GEMM kernel that computes C = A * B using hierarchical
  * blocking and shared memory optimization.
  *
- * @param C      Output matrix (M x N), row-major order
- * @param A      Input matrix A (M x K), row-major order
- * @param B      Input matrix B (K x N), row-major order
+ * @param C      Output matrix (M x N)
+ * @param A      Input matrix A (M x K)
+ * @param B      Input matrix B (K x N)
  * @param M      Number of rows in A and C
  * @param N      Number of columns in B and C
  * @param K      Number of columns in A and rows in B
@@ -48,32 +48,77 @@ namespace rocm_sgemm
  * @pre Matrix dimensions must be positive
  * @post C contains the result of A * B (previous contents overwritten)
  */
-template<m_layout layout_C, m_layout layout_A, m_layout layout_B>
-__host__ void gemm(float* C, float* A, float* B, size_t M, size_t N, size_t K, hipStream_t& stream);
+template<m_layout layout_C, m_layout layout_A, m_layout layout_B, class T>
+__host__ void gemm(T* C, T* A, T* B, size_t M, size_t N, size_t K, hipStream_t& stream);
 
-extern template __host__ void gemm<m_layout::row_major, m_layout::col_major, m_layout::col_major>(
-    float* C, float* A, float* B, size_t M, size_t N, size_t K, hipStream_t& stream);
+// Macro to declare all layout combinations for a type
+#define DECLARE_GEMM_FOR_TYPE(T)                                                              \
+    extern template void gemm<m_layout::row_major, m_layout::row_major, m_layout::row_major>( \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        hipStream_t&);                                                                        \
+    extern template void gemm<m_layout::row_major, m_layout::row_major, m_layout::col_major>( \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        hipStream_t&);                                                                        \
+    extern template void gemm<m_layout::row_major, m_layout::col_major, m_layout::row_major>( \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        hipStream_t&);                                                                        \
+    extern template void gemm<m_layout::row_major, m_layout::col_major, m_layout::col_major>( \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        hipStream_t&);                                                                        \
+    extern template void gemm<m_layout::col_major, m_layout::row_major, m_layout::row_major>( \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        hipStream_t&);                                                                        \
+    extern template void gemm<m_layout::col_major, m_layout::row_major, m_layout::col_major>( \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        hipStream_t&);                                                                        \
+    extern template void gemm<m_layout::col_major, m_layout::col_major, m_layout::row_major>( \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        hipStream_t&);                                                                        \
+    extern template void gemm<m_layout::col_major, m_layout::col_major, m_layout::col_major>( \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        T*,                                                                                   \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        size_t,                                                                               \
+        hipStream_t&);
 
-extern template __host__ void gemm<m_layout::row_major, m_layout::row_major, m_layout::col_major>(
-    float* C, float* A, float* B, size_t M, size_t N, size_t K, hipStream_t& stream);
-
-extern template __host__ void gemm<m_layout::row_major, m_layout::col_major, m_layout::row_major>(
-    float* C, float* A, float* B, size_t M, size_t N, size_t K, hipStream_t& stream);
-
-extern template __host__ void gemm<m_layout::row_major, m_layout::row_major, m_layout::row_major>(
-    float* C, float* A, float* B, size_t M, size_t N, size_t K, hipStream_t& stream);
-
-extern template __host__ void gemm<m_layout::col_major, m_layout::col_major, m_layout::col_major>(
-    float* C, float* A, float* B, size_t M, size_t N, size_t K, hipStream_t& stream);
-
-extern template __host__ void gemm<m_layout::col_major, m_layout::row_major, m_layout::col_major>(
-    float* C, float* A, float* B, size_t M, size_t N, size_t K, hipStream_t& stream);
-
-extern template __host__ void gemm<m_layout::col_major, m_layout::col_major, m_layout::row_major>(
-    float* C, float* A, float* B, size_t M, size_t N, size_t K, hipStream_t& stream);
-
-extern template __host__ void gemm<m_layout::col_major, m_layout::row_major, m_layout::row_major>(
-    float* C, float* A, float* B, size_t M, size_t N, size_t K, hipStream_t& stream);
+DECLARE_GEMM_FOR_TYPE(float)
 
 } // namespace rocm_sgemm
 
