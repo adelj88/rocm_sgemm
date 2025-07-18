@@ -65,6 +65,8 @@ class OptunaTuner:
                 (256, 128, 64, 16, 1, 1, 4, 8, 2),  # Random blocks
                 (512, 256, 256, 8, 2, 8, 4, 2, 8),  # Random blocks
                 (64, 128, 64, 8, 4, 4, 2, 4, 4),    # Random blocks
+                (128, 64, 256, 4, 2, 8, 4, 2, 4),   # Random blocks
+                (128, 64, 256, 4, 2, 8, 4, 2, 8),   # Random blocks
             ]
         else:
             self.baselines = baselines

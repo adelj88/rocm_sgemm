@@ -193,7 +193,7 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
     for(int k_tile = 0; k_tile < K; k_tile += block_k)
     {
         // Prefetch next tiles
-        if(k_tile + block_k < K && tid >= half_block)
+        /*if(k_tile + block_k < K && tid >= half_block)
         {
             const T* next_A = A_tile_ptr + block_k * global_mult_A;
             load_to_shared<m_input::matrix_a, LAYOUT_A, half_block, block_m, block_k>(next_a,
@@ -201,11 +201,20 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                                                                                       M,
                                                                                       K,
                                                                                       cid);
-        }
+        }*/
+
+        const T* next_A       = A_tile_ptr + block_k * global_mult_A;
+        const T* next_B       = B_tile_ptr + block_k * global_mult_B;
+        float*   shared_a_ptr = next_a;
+        float*   shared_b_ptr = next_b;
+
+        const bool next_tile_available = k_tile + block_k < K;
 
         // Compute on current tile
         for(int k_offset = 0; k_offset < block_k; ++k_offset)
         {
+            const int warp_idx = (k_offset & (num_warps - 1));
+
             const int thread_a_base = warp_base_row + thread_row_in_warp * thread_tile_m;
             const int thread_b_base = warp_base_col + thread_col_in_warp * thread_tile_n;
 
@@ -267,9 +276,28 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                     }
                 }
             }
+
+            if(next_tile_available && warp_id == warp_idx)
+            {
+                load_to_shared_slice<m_input::matrix_a, LAYOUT_A, warp_size, block_m>(shared_a_ptr,
+                                                                                      next_A,
+                                                                                      M,
+                                                                                      K,
+                                                                                      lane_id);
+                load_to_shared_slice<m_input::matrix_b, LAYOUT_B, warp_size, block_n>(shared_b_ptr,
+                                                                                      next_B,
+                                                                                      K,
+                                                                                      N,
+                                                                                      lane_id);
+            }
+
+            next_A += global_mult_A;
+            next_B += global_mult_B;
+            shared_a_ptr += block_m;
+            shared_b_ptr += block_n;
         }
 
-        if(k_tile + block_k < K && tid < half_block)
+        /*if(k_tile + block_k < K && tid < half_block)
         {
             const T* next_B = B_tile_ptr + block_k * global_mult_B;
             load_to_shared<m_input::matrix_b, LAYOUT_B, half_block, block_k, block_n>(next_b,
@@ -277,7 +305,7 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                                                                                       K,
                                                                                       N,
                                                                                       cid);
-        }
+        }*/
 
         // Advance pointers and swap buffers
         A_tile_ptr += block_k * global_mult_A;
