@@ -211,6 +211,9 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
         T*   shared_a_ptr = next_a;
         T*   shared_b_ptr = next_b;
 
+        const T* curr_a = current_a + thread_a_base;
+        const T* curr_b = current_b + thread_b_base;
+
         const bool next_tile_available = k_tile + block_k < K;
 
         // Compute on current tile
@@ -218,8 +221,8 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
         {
             const int warp_idx = (k_offset & (num_warps - 1));
 
-            const T* a_ptr = current_a + k_offset * block_m + thread_a_base;
-            const T* b_ptr = current_b + k_offset * block_n + thread_b_base;
+            const T* a_ptr = curr_a;
+            const T* b_ptr = curr_b;
 
             if constexpr(warp_tile_m_count < warp_tile_n_count)
             {
@@ -258,6 +261,20 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                 }
             }
 
+            if(next_tile_available && warp_id == warp_idx)
+            {
+                load_to_shared_slice<m_input::matrix_a, LAYOUT_A, warp_size, block_m>(shared_a_ptr,
+                                                                                      next_A,
+                                                                                      M,
+                                                                                      K,
+                                                                                      lane_id);
+                load_to_shared_slice<m_input::matrix_b, LAYOUT_B, warp_size, block_n>(shared_b_ptr,
+                                                                                      next_B,
+                                                                                      K,
+                                                                                      N,
+                                                                                      lane_id);
+            }
+
             // Compute outer products
             for(int wm = 0; wm < warp_tile_m_count; ++wm)
             {
@@ -277,24 +294,12 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
                 }
             }
 
-            if(next_tile_available && warp_id == warp_idx)
-            {
-                load_to_shared_slice<m_input::matrix_a, LAYOUT_A, warp_size, block_m>(shared_a_ptr,
-                                                                                      next_A,
-                                                                                      M,
-                                                                                      K,
-                                                                                      lane_id);
-                load_to_shared_slice<m_input::matrix_b, LAYOUT_B, warp_size, block_n>(shared_b_ptr,
-                                                                                      next_B,
-                                                                                      K,
-                                                                                      N,
-                                                                                      lane_id);
-            }
-
             next_A += global_mult_A;
             next_B += global_mult_B;
             shared_a_ptr += block_m;
             shared_b_ptr += block_n;
+            curr_a += block_m;
+            curr_b += block_n;
         }
 
         /*if(k_tile + block_k < K && tid < half_block)
