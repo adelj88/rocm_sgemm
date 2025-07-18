@@ -185,11 +185,9 @@ __device__ __forceinline__ auto
         {
             // Target: [K][M] layout, for slice [1][M]: k=0, m=vec_idx
             // Source: col_major global [K][M] -> gload = k * M + m
-            const int gload = vec_idx;
-
             // Store at vec_idx position (which is [K][M] order for the slice)
             *reinterpret_cast<vector_type*>(output + vec_idx)
-                = *reinterpret_cast<const vector_type*>(input + gload);
+                = *reinterpret_cast<const vector_type*>(input + vec_idx);
         }
     }
 }
@@ -212,8 +210,7 @@ __device__ __forceinline__ auto
             // Target shared memory: [K][M] layout, for slice [1][M]: k=0, m=linear_idx
             // Source global memory: row_major [M][K] layout
             // We want global element at position [m][k]
-            const int gload = linear_idx * K;
-
+            const int gload    = linear_idx * K;
             output[linear_idx] = input[gload];
         }
     }
@@ -240,11 +237,9 @@ __device__ __forceinline__ auto
         {
             // Target: [K][N] layout, for slice [1][N]: k=0, n=vec_idx
             // Source: row_major global [K][N] -> gload = k * N + n
-            const int gload = vec_idx;
-
             // Store at vec_idx position ([K][N] order for the slice)
             *reinterpret_cast<vector_type*>(output + vec_idx)
-                = *reinterpret_cast<const vector_type*>(input + gload);
+                = *reinterpret_cast<const vector_type*>(input + vec_idx);
         }
     }
 }
@@ -267,8 +262,7 @@ __device__ __forceinline__ auto
             // Target shared memory: [K][N] layout, for slice [1][N]: k=0, n=linear_idx
             // Source global memory: col_major [N][K] layout
             // We want global element at position [n][k]
-            const int gload = linear_idx * K;
-
+            const int gload    = linear_idx * K;
             output[linear_idx] = input[gload];
         }
     }

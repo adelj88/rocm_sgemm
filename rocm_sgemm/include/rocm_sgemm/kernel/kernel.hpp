@@ -189,6 +189,9 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
     const int global_mult_A = (LAYOUT_A == m_layout::col_major) ? M : 1;
     const int global_mult_B = (LAYOUT_B == m_layout::col_major) ? 1 : N;
 
+    const int thread_a_base = warp_base_row + thread_row_in_warp * thread_tile_m;
+    const int thread_b_base = warp_base_col + thread_col_in_warp * thread_tile_n;
+
     // Main computation loop
     for(int k_tile = 0; k_tile < K; k_tile += block_k)
     {
@@ -205,8 +208,8 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
 
         const T* next_A       = A_tile_ptr + block_k * global_mult_A;
         const T* next_B       = B_tile_ptr + block_k * global_mult_B;
-        float*   shared_a_ptr = next_a;
-        float*   shared_b_ptr = next_b;
+        T*   shared_a_ptr = next_a;
+        T*   shared_b_ptr = next_b;
 
         const bool next_tile_available = k_tile + block_k < K;
 
@@ -214,9 +217,6 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
         for(int k_offset = 0; k_offset < block_k; ++k_offset)
         {
             const int warp_idx = (k_offset & (num_warps - 1));
-
-            const int thread_a_base = warp_base_row + thread_row_in_warp * thread_tile_m;
-            const int thread_b_base = warp_base_col + thread_col_in_warp * thread_tile_n;
 
             const T* a_ptr = current_a + k_offset * block_m + thread_a_base;
             const T* b_ptr = current_b + k_offset * block_n + thread_b_base;
