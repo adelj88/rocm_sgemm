@@ -26,12 +26,12 @@ Testing all implementations on the same hardware (AMD 7900 GRE) using minimum ex
 
 | Implementation | Description | Minimum Time (ms) | Performance (TFLOPS) | vs rocBLAS |
 |----------------|-------------|-----------|---------------------|-------------|
-| rocBLAS | Baseline | 5.88 | 23.4 | 100.0% |
-| Sebastien K5 | LDS Optimization (HIP C++) | 5.49 | 25.0 | 106.8% |
-| Sebastien K6 | VALU Optimization (ISA) | 4.79 | 28.7 | 122.6% |
-| Sebastien K7 | Loop Unrolling (ISA) | 4.58 | 30.0 | 128.2% |
-| Sebastien K8 | Batched GMem loads (ISA) | 4.02 | 34.2 | 146.2% |
-| **rocm_sgemm** | **HIP C++ Optimized** | **4.55** | **30.2** | **129.1%** |
+| rocBLAS | Baseline | 5.84 | 23.5 | 100.0% |
+| Sebastien K5 | LDS Optimization (HIP C++) | 5.39 | 25.5 | 108.5% |
+| Sebastien K6 | VALU Optimization (ISA) | 4.84 | 28.4 | 120.8% |
+| Sebastien K7 | Loop Unrolling (ISA) | 4.59 | 30.0 | 127.4% |
+| Sebastien K8 | Batched GMem loads (ISA) | 3.99 | 34.5 | 146.7% |
+| **rocm_sgemm** | **HIP C++ Optimized** | **4.36** | **31.5** | **134.0%** |
 
 *Note that average execution times typically provide more realistic performance indicators for practical applications.*
 
@@ -39,12 +39,12 @@ Below are the average execution times by modifying Sebastien's benchmarking meth
 
 | Implementation | Description | Average Time (ms) | Performance (TFLOPS) | vs rocBLAS |
 |----------------|-------------|-----------|---------------------|-------------|
-| rocBLAS | Baseline | 6.28 | 21.9 | 100.0% |
-| Sebastien K5 | LDS Optimization (HIP C++) | 5.96 | 23.1 | 105.5% |
-| Sebastien K6 | VALU Optimization (ISA) | 5.37 | 25.6 | 117.1% |
-| Sebastien K7 | Loop Unrolling (ISA) | 5.03 | 27.3 | 124.8% |
-| Sebastien K8 | Batched GMem loads (ISA) | 4.46 | 30.8 | 140.8% |
-| **rocm_sgemm** | **HIP C++ Optimized** | **4.80** | **28.6** | **130.8%** |
+| rocBLAS | Baseline | 6.30 | 21.8 | 100.0% |
+| Sebastien K5 | LDS Optimization (HIP C++) | 5.98 | 23.0 | 105.5% |
+| Sebastien K6 | VALU Optimization (ISA) | 5.48 | 25.1 | 115.1% |
+| Sebastien K7 | Loop Unrolling (ISA) | 5.05 | 27.2 | 124.8% |
+| Sebastien K8 | Batched GMem loads (ISA) | 4.54 | 30.3 | 139.0% |
+| **rocm_sgemm** | **HIP C++ Optimized** | **4.70** | **29.3** | **134.4%** |
 
 **Key Finding**: `rocm_sgemm` matches Sebastien's hand-tuned ISA Kernel 7 performance, proving that the perceived "HIP C++ limitation" can be overcome with the right optimization techniques, while maintaining portability across GPU architectures.
 
