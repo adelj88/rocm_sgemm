@@ -37,7 +37,7 @@ Testing all implementations on the same hardware (AMD 7900 GRE) using minimum ex
 
 Below are the average execution times by modifying Sebastien's benchmarking methodology:
 
-| Implementation | Description | Average Time (ms) | Performance (GFLOPS) | vs rocBLAS |
+| Implementation | Description | Average Time (ms) | Performance (TFLOPS) | vs rocBLAS |
 |----------------|-------------|-----------|---------------------|-------------|
 | rocBLAS | Baseline | 6.28 | 21.9 | 100.0% |
 | Sebastien K5 | LDS Optimization (HIP C++) | 5.96 | 23.1 | 105.5% |
@@ -70,8 +70,8 @@ Below is a comparison against rocBLAS for different layout permutations and usin
 ### Build Steps
 1. Clone the repository:
    ```bash
-   git https://github.com/adelj88/rocm_wmma_gemm.git
-   cd rocm_wmma_gemm
+   git https://github.com/adelj88/rocm_sgemm.git
+   cd rocm_sgemm
    ```
 2. Build:
    ```bash
