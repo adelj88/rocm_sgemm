@@ -149,15 +149,19 @@ public:
     }
 };
 
+// TODO: Fix condition when min_block_bytes is smaller than sizeof(float); not important given
+// the kernel targets a specific tile_bytes that is always larger than sizeof(float)
 template<class T, int TILE>
 __device__ __forceinline__ void load_matrix(fragment<T, TILE>& frag, const T* data, int M, int N)
 {
-    constexpr int max_load_width    = 8;
-    constexpr int tile_bytes        = TILE * sizeof(T);
-    constexpr int actual_load_width = (tile_bytes >= 32)   ? max_load_width
-                                      : (tile_bytes >= 16) ? 4
-                                      : (tile_bytes >= 8)  ? 2
-                                                           : 1;
+    constexpr int tile_bytes = TILE * sizeof(T);
+
+    // Find largest power of 2 (in T units) that divides tile_bytes
+    constexpr int element_alignment = tile_bytes / sizeof(T); // This is just TILE
+    constexpr int calculated_width  = element_alignment & (-element_alignment);
+    constexpr int max_vector_width  = 32 / sizeof(T); // 32 bytes = 2 * 128-bit loads
+    constexpr int actual_load_width
+        = (calculated_width > max_vector_width) ? max_vector_width : calculated_width;
 
     if constexpr(actual_load_width == 1)
     {
@@ -169,7 +173,7 @@ __device__ __forceinline__ void load_matrix(fragment<T, TILE>& frag, const T* da
     }
     else
     {
-        using vector_type          = float __attribute__((ext_vector_type(actual_load_width)));
+        using vector_type          = T __attribute__((ext_vector_type(actual_load_width)));
         constexpr int vector_width = (sizeof(vector_type) / sizeof(T));
         constexpr int width        = (TILE + vector_width - 1) / vector_width;
 

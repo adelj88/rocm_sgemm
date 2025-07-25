@@ -107,22 +107,11 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
     const int grid_n  = (N + block_n - 1) / block_n;
     const int tile_id = blockIdx.x;
 
-    constexpr bool use_hilbert
-        = !(LAYOUT_A == m_layout::row_major && LAYOUT_B == m_layout::row_major);
+    using mapper = tile_mapper<block_m, block_n, LAYOUT_A, LAYOUT_B>;
 
+    // Get block coordinates
     int block_row, block_col;
-    if constexpr(use_hilbert)
-    {
-        hilbert_tile_mapping<block_m, block_n>(tile_id, grid_m, grid_n, &block_row, &block_col);
-    }
-    else
-    {
-        bit_reversal_swizzle_mapping<block_m, block_n>(tile_id,
-                                                       grid_m,
-                                                       grid_n,
-                                                       &block_row,
-                                                       &block_col);
-    }
+    mapper().map_tile(tile_id, grid_m, grid_n, &block_row, &block_col);
 
     // Shared memory allocation
     __shared__ T lds_mem[2 * lds_size];
