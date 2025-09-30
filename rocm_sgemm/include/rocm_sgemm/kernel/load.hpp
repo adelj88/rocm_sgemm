@@ -93,7 +93,9 @@ __device__ __forceinline__ auto load_to_shared(T* output, const T* input, int M,
             // We want global element at position [m][k]
             const int gload = m * N + k;
 
-            output[linear_idx] = input[gload];
+            // Calculate output position with padding
+            const int output_idx = k * (BLOCK_M + padding) + m;
+            output[output_idx]   = input[gload];
         }
     }
 }
@@ -163,7 +165,9 @@ __device__ __forceinline__ auto load_to_shared(T* output, const T* input, int M,
             // We want global element at position [n][k]
             const int gload = n * M + k;
 
-            output[linear_idx] = input[gload];
+            // Calculate output position with padding
+            const int output_idx = k * (BLOCK_N + padding) + n;
+            output[output_idx]   = input[gload];
         }
     }
 }

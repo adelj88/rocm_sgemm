@@ -81,7 +81,7 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
     T* C, const T* A, const T* B, int M, int N, int K)
 {
     // Thread arrangement within warp
-    constexpr int threads_m = warp_size / threads_n; // 4
+    constexpr int threads_m = warp_size / threads_n;
 
     // Sub-tile dimensions (elements per warp sub-tile)
     constexpr int sub_tile_m = thread_tile_m * threads_m;
@@ -100,7 +100,10 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
     static_assert(block_n % warp_n == 0);
     static_assert(num_warps == block_size / warp_size);
 
-    constexpr int lds_size = (block_m * block_k) + (block_k * block_n);
+    constexpr int padding_a = (LAYOUT_A == m_layout::row_major) ? padding : 0;
+    constexpr int padding_b = (LAYOUT_B == m_layout::col_major) ? padding : 0;
+
+    constexpr int lds_size = ((block_m + padding_a) * block_k) + (block_k * (block_n + padding_b));
 
     // Block coordinates
     const int grid_m  = (M + block_m - 1) / block_m;
@@ -119,8 +122,8 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
     // Double buffer partitioning
     T* a_tiles_0 = lds_mem;
     T* a_tiles_1 = lds_mem + lds_size;
-    T* b_tiles_0 = lds_mem + (block_m * block_k);
-    T* b_tiles_1 = lds_mem + lds_size + (block_m * block_k);
+    T* b_tiles_0 = lds_mem + ((block_m + padding_a) * block_k);
+    T* b_tiles_1 = lds_mem + lds_size + ((block_m + padding_a) * block_k);
 
     // Thread and warp identification
     const int tid      = threadIdx.x;
@@ -244,24 +247,26 @@ __global__ __launch_bounds__(block_size) void kernel_gemm(
             // Compute outer products
             for(int wm = 0; wm < warp_tile_m_count; ++wm)
             {
+                auto& a_ptr = a_frag[wm].get();
                 for(int wn = 0; wn < warp_tile_n_count; ++wn)
                 {
                     auto& dest_ptr = c_frag[wm][wn].get();
+                    auto& b_ptr    = b_frag[wn].get();
                     for(int tm = 0; tm < thread_tile_m; ++tm)
                     {
-                        T         a_val  = a_frag[wm][tm];
+                        T         a_val  = a_ptr[tm];
                         const int offset = tm * thread_tile_n;
 
                         for(int tn = 0; tn < thread_tile_n; ++tn)
                         {
-                            dest_ptr[offset + tn] += a_val * b_frag[wn][tn];
+                            dest_ptr[offset + tn] += a_val * b_ptr[tn];
                         }
                     }
                 }
             }
 
-            curr_a += block_m;
-            curr_b += block_n;
+            curr_a += (block_m + padding_a);
+            curr_b += (block_n + padding_b);
         }
 
         if(k_tile + block_k < K && tid < half_block)

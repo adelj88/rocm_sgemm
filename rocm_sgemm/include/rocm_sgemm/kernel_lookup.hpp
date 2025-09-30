@@ -22,33 +22,22 @@
  * SOFTWARE.
  */
 
-#ifndef ROCM_SGEMM_COMMON_HPP
-#define ROCM_SGEMM_COMMON_HPP
+#ifndef ROCM_SGEMM_KERNEL_LOOKUP_HPP
+#define ROCM_SGEMM_KERNEL_LOOKUP_HPP
 
-#include <hip/hip_runtime.h>
+#include <cstddef>
 
 namespace rocm_sgemm
 {
 
-/**
- * @brief Enum class defining matrix layout options
- */
-enum class m_layout
-{
-    row_major, ///< Row-major layout (elements consecutive in memory by row)
-    col_major ///< Column-major layout (elements consecutive in memory by column)
-};
-
-// Enum to specify which matrix is being accessed (A or B)
-enum class m_input
-{
-    matrix_a,
-    matrix_b
-};
-
-constexpr int warp_size = 32;
-constexpr int padding   = 4;
+// Lookup function: returns kernel function pointer from static 3D table
+// Parameters:
+//   config_idx: Configuration index (from find_best_config)
+//   layout_idx: Layout combination index (0-7 for ABC combinations)
+//               0=rrr, 1=rrc, 2=rcr, 3=rcc, 4=crr, 5=crc, 6=ccr, 7=ccc
+//   alignment_idx: Alignment index (0=unaligned, 1=aligned)
+void* lookup_kernel(size_t config_idx, size_t layout_idx, size_t alignment_idx);
 
 } // namespace rocm_sgemm
 
-#endif // ROCM_SGEMM_COMMON_HPP
+#endif // ROCM_SGEMM_KERNEL_LOOKUP_HPP

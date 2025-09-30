@@ -1,27 +1,17 @@
 # Create an executable target
-add_executable(gemm_bench gemm/bench.cpp)
+add_executable(bench_float gemm/bench.cpp)
 
 # Include HIP include directories
-target_include_directories(gemm_bench PRIVATE ${PROJECT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(bench_float PRIVATE ${PROJECT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Link HIP libraries
-target_link_libraries(gemm_bench PRIVATE rocm_sgemm benchmark::benchmark)
-
-# Add optimization flags
-target_compile_options(gemm_bench PRIVATE
-    -O3                 # High optimization
-)
+target_link_libraries(bench_float PRIVATE rocm_sgemm benchmark::benchmark)
 
 # Create an executable target
-add_executable(rocblas_bench rocblas/bench.cpp)
+add_executable(bench_rocblas rocblas/bench.cpp)
 
 # Include HIP include directories
-target_include_directories(rocblas_bench PRIVATE ${PROJECT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(bench_rocblas PRIVATE ${PROJECT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Link HIP libraries
-target_link_libraries(rocblas_bench PRIVATE rocblas_wrapper benchmark::benchmark)
-
-# Add optimization flags
-target_compile_options(rocblas_bench PRIVATE
-    -O3                 # High optimization
-)
+target_link_libraries(bench_rocblas PRIVATE rocblas_wrapper benchmark::benchmark)

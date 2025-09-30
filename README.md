@@ -143,10 +143,8 @@ Below are benchmark results (in TFLOPs) that compares `rocm_wmma_gemm` against `
 - [View detailed square matrix benchmarks](docs/square.md)
 
 ## Future Plans
-1. Address lower performance for column-major output
-   - A separate tuning profile is probably necessary, given that the current tuning script focuses on row-major outputs
-2. Further tuning to get better performance
-3. Explore any possibility of further optimizations
+1. Further tuning to get better performance
+2. Explore any possibility of further optimizations
 
 ## License
 

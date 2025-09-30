@@ -1,31 +1,4 @@
-def tune_abc_layout(self, M, N, K, layout_a, layout_b, layout_c, max_evaluations=150):
-        """Tune for (A,B,C) layout combination using Optuna TPE."""
-        layout_names = {0: "r", 1: "c"}
-        print(f"\nTuning {M}×{N}×{K} with layout A={layout_names[layout_a]}, B={layout_names[layout_b]}, C={layout_names[layout_c]}")
-        print("Using Optuna TPE (Tree-structured Parzen Estimators)")
-
-        # Reset state for this problem
-        self.current_problem = (M, N, K, layout_a, layout_b, layout_c)
-        self.total_evaluations = 0
-        self.best_config = None
-        self.best_time = float('inf')
-        self.improvement_history = []
-
-        # Create Optuna study
-        study = optuna.create_study(
-            direction='minimize',
-            sampler=optuna.samplers.TPESampler(
-                seed=self.random_seed,
-                n_startup_trials=min(10, max_evaluations // 4),
-                n_ei_candidates=24,
-                multivariate=True
-            )
-        )
-
-        print("Starting Optuna optimization...")
-
-        # Enqueue baseline configurations first
-        baseline#!/usr/bin/env python3
+#!/usr/bin/env python3
 
 import subprocess
 import json
@@ -36,6 +9,7 @@ import re
 import argparse
 import sys
 import random
+from pathlib import Path
 
 warnings.filterwarnings('ignore')
 
@@ -92,7 +66,6 @@ class OptunaTuner:
 
         # Generate all valid configurations for sampling
         self.valid_configs = self._generate_valid_configs()
-        self.filtered_param_space = self._create_filtered_parameter_space()
         print(f"Generated {len(self.valid_configs)} valid configurations")
 
         # State tracking
@@ -101,27 +74,6 @@ class OptunaTuner:
         self.best_config = None
         self.best_time = float('inf')
         self.improvement_history = []
-
-    def _create_filtered_parameter_space(self):
-        """Create parameter space containing only values that appear in valid configurations."""
-        filtered_space = {}
-
-        # Extract unique values for each parameter from valid configs
-        filtered_space['block_size'] = sorted(list(set(config[0] for config in self.valid_configs)))
-        filtered_space['block_m'] = sorted(list(set(config[1] for config in self.valid_configs)))
-        filtered_space['block_n'] = sorted(list(set(config[2] for config in self.valid_configs)))
-        filtered_space['block_k'] = sorted(list(set(config[3] for config in self.valid_configs)))
-        filtered_space['warp_tile_m_count'] = sorted(list(set(config[4] for config in self.valid_configs)))
-        filtered_space['warp_tile_n_count'] = sorted(list(set(config[5] for config in self.valid_configs)))
-        filtered_space['thread_tile_m'] = sorted(list(set(config[6] for config in self.valid_configs)))
-        filtered_space['thread_tile_n'] = sorted(list(set(config[7] for config in self.valid_configs)))
-        filtered_space['threads_n'] = sorted(list(set(config[8] for config in self.valid_configs)))
-
-        print("Filtered parameter space:")
-        for param, values in filtered_space.items():
-            print(f"  {param}: {values}")
-
-        return filtered_space
 
     def _generate_valid_configs(self):
         """Generate all valid discrete configurations."""
@@ -192,13 +144,20 @@ class OptunaTuner:
         return True
 
     def _parse_benchmark_output(self, output):
-        """Parse benchmark output to extract timing."""
+        """Parse benchmark output to extract timing (handles with/without repetitions)."""
         lines = output.strip().split('\n')
         for line in lines:
-            if 'dynamic_kernel/manual_time' in line:
-                match = re.search(r'(\d+\.?\d*)\s*ms', line)
+            # With repetitions: use mean
+            if 'manual_time_mean' in line and 'repeats:' in line:
+                match = re.search(r'(\d+\.?\d*)\s+ms', line)
                 if match:
                     return float(match.group(1))
+            # Single run (with or without repeats:1)
+            elif 'dynamic_kernel' in line and 'manual_time' in line and '_mean' not in line:
+                match = re.search(r'(\d+\.?\d*)\s+ms', line)
+                if match:
+                    return float(match.group(1))
+
         return None
 
     def _evaluate_config(self, M, N, K, layout_a, layout_b, layout_c, config):
@@ -209,7 +168,7 @@ class OptunaTuner:
 
         try:
             result = subprocess.run([
-                "rocm_sgemm/tuner",
+                "./rocm_sgemm/tuner",
                 str(M), str(N), str(K),
                 str(block_size), str(block_m), str(block_n), str(block_k),
                 str(warp_tile_m_count), str(warp_tile_n_count),
@@ -272,8 +231,7 @@ class OptunaTuner:
 
         return time_ms
 
-
-    def tune_abc_layout(self, M, N, K, layout_a, layout_b, layout_c, max_evaluations=150):
+    def tune_abc_layout(self, M, N, K, layout_a, layout_b, layout_c, max_evaluations=150, existing_baseline=None):
         """Tune for (A,B,C) layout combination using Optuna TPE."""
         layout_names = {0: "r", 1: "c"}
         print(f"\nTuning {M}×{N}×{K} with layout A={layout_names[layout_a]}, B={layout_names[layout_b]}, C={layout_names[layout_c]}")
@@ -299,8 +257,10 @@ class OptunaTuner:
 
         print("Starting Optuna optimization...")
 
-        # Add baseline configurations
-        for i, baseline in enumerate(self.baselines):
+        # Enqueue baseline configurations first
+        baselines_to_use = self.baselines if existing_baseline is None else [existing_baseline]
+
+        for i, baseline in enumerate(baselines_to_use):
             if self._check_constraints(baseline):
                 (block_size, block_m, block_n, block_k,
                  warp_tile_m_count, warp_tile_n_count,
@@ -317,6 +277,9 @@ class OptunaTuner:
                     'thread_tile_n': thread_tile_n,
                     'threads_n': threads_n
                 })
+
+        if existing_baseline is not None:
+            print(f"  Using existing config as baseline: {existing_baseline}")
 
         # Run optimization - invalid configs will be pruned automatically
         study.optimize(self._objective_function_with_params, n_trials=max_evaluations, show_progress_bar=False)
@@ -342,6 +305,7 @@ class OptunaTuner:
         print(f"  Improvements found: {len(self.improvement_history)}")
         print(f"  Valid evaluations: {self.total_evaluations}")
         print(f"  Completed trials: {completed_trials}, Pruned trials: {pruned_trials}")
+        print(f"  Valid rate: {completed_trials/(completed_trials + pruned_trials)*100:.1f}%")
         print(f"  Space coverage: {coverage:.2f}%")
 
         return {
@@ -362,7 +326,7 @@ class OptunaTuner:
             'space_coverage_percent': coverage
         }
 
-    def tune_all(self, sizes=None, abc_layouts=None, max_evaluations=150):
+    def tune_all(self, sizes=None, abc_layouts=None, max_evaluations=150, existing_configs=None):
         """Tune all size and (A,B,C) layout combinations."""
         if sizes is None:
             sizes = [
@@ -385,7 +349,12 @@ class OptunaTuner:
             for layout_a, layout_b, layout_c in abc_layouts:
                 layout_key = f"{layout_a}_{layout_b}_{layout_c}"
 
-                result = self.tune_abc_layout(M, N, K, layout_a, layout_b, layout_c, max_evaluations)
+                # Check if we have an existing config for this size/layout
+                existing_baseline = None
+                if existing_configs:
+                    existing_baseline = existing_configs.get(size_key, {}).get(layout_key)
+
+                result = self.tune_abc_layout(M, N, K, layout_a, layout_b, layout_c, max_evaluations, existing_baseline)
 
                 if result:
                     results[size_key][layout_key] = {
@@ -403,6 +372,106 @@ class OptunaTuner:
                     }
 
         return results
+
+def load_existing_json(input_file):
+    """Load existing JSON configuration file and extract configs by size and layout."""
+    if not Path(input_file).exists():
+        print(f"Warning: Input file '{input_file}' not found. Starting fresh.")
+        return None
+
+    try:
+        with open(input_file, 'r') as f:
+            data = json.load(f)
+
+        # Convert to internal format: size_key -> layout_key -> baseline tuple
+        existing_configs = {}
+
+        for config_entry in data.get('configurations', []):
+            M = config_entry['range']['M']
+            N = config_entry['range']['N']
+            K = config_entry['range']['K']
+            size_key = f"{M}x{N}x{K}"
+
+            layout = config_entry['layout']
+            layout_a = 0 if layout['A'] == 'row_major' else 1
+            layout_b = 0 if layout['B'] == 'row_major' else 1
+            layout_c = 0 if layout['C'] == 'row_major' else 1
+            layout_key = f"{layout_a}_{layout_b}_{layout_c}"
+
+            cfg = config_entry['config']
+            baseline = (
+                cfg['block_size'],
+                cfg['block_m'],
+                cfg['block_n'],
+                cfg['block_k'],
+                cfg['warp_tile_m_count'],
+                cfg['warp_tile_n_count'],
+                cfg['thread_tile_m'],
+                cfg['thread_tile_n'],
+                cfg['threads_n']
+            )
+
+            if size_key not in existing_configs:
+                existing_configs[size_key] = {}
+            existing_configs[size_key][layout_key] = baseline
+
+        print(f"Loaded {len(data.get('configurations', []))} existing configurations from '{input_file}'")
+        return existing_configs
+
+    except Exception as e:
+        print(f"Error loading input file '{input_file}': {e}")
+        print("Starting fresh.")
+        return None
+
+def merge_results(existing_configs_raw, new_results):
+    """Merge new results with existing configurations, preferring new results."""
+    if existing_configs_raw is None:
+        return new_results
+
+    # Convert existing raw configs back to result format
+    merged = {}
+
+    # First, add all existing configs
+    for size_key, layout_dict in existing_configs_raw.items():
+        merged[size_key] = {}
+        for layout_key, baseline in layout_dict.items():
+            # Parse size
+            M, N, K = map(int, size_key.split('x'))
+            # Parse layout
+            layout_a, layout_b, layout_c = map(int, layout_key.split('_'))
+
+            merged[size_key][layout_key] = {
+                "M": M, "N": N, "K": K,
+                "layout": {
+                    "A": "row_major" if layout_a == 0 else "col_major",
+                    "B": "row_major" if layout_b == 0 else "col_major",
+                    "C": "row_major" if layout_c == 0 else "col_major"
+                },
+                "config": {
+                    'block_size': int(baseline[0]),
+                    'block_m': int(baseline[1]),
+                    'block_n': int(baseline[2]),
+                    'block_k': int(baseline[3]),
+                    'warp_tile_m_count': int(baseline[4]),
+                    'warp_tile_n_count': int(baseline[5]),
+                    'thread_tile_m': int(baseline[6]),
+                    'thread_tile_n': int(baseline[7]),
+                    'threads_n': int(baseline[8])
+                },
+                "avg_time_ms": None,  # Unknown from existing
+                "evaluations": 0,
+                "memory_used_bytes": None,
+                "space_coverage_percent": 0
+            }
+
+    # Now overwrite with new results
+    for size_key, layout_dict in new_results.items():
+        if size_key not in merged:
+            merged[size_key] = {}
+        for layout_key, result in layout_dict.items():
+            merged[size_key][layout_key] = result
+
+    return merged
 
 def parse_matrix_sizes(size_strings):
     """Parse matrix size strings like '1024,1024,1024' into tuples."""
@@ -468,33 +537,44 @@ Examples:
   # Default run with Optuna TPE
   python tune.py
 
+  # Load existing config and re-tune specific layouts
+  python tune.py --input gemm_config.json --layouts r,r,r c,c,c
+
+  # Load existing config, re-tune specific size, use existing as baseline
+  python tune.py --input gemm_config.json --sizes 4096,4096,4096
+
+  # Load and reduce budget (faster re-tuning)
+  python tune.py --input gemm_config.json --budget 50
+
   # Specific seed for reproducibility
   python tune.py --seed 123
 
-  # Larger budget for better results
-  python tune.py --budget 100
+  # Larger budget for thorough search
+  python tune.py --budget 150
 
   # Test specific sizes
   python tune.py --sizes 1024,1024,1024 2048,2048,2048
 
-  # Test specific (A,B,C) layout combinations
-  python tune.py --layouts r,r,r c,c,c r,c,r
-
-  # Custom baselines
+  # Custom baselines (overrides input file baselines)
   python tune.py --baselines 128,128,128,8,4,4,2,4,8 256,128,128,8,2,2,4,4,4
+
+  # Specific layouts (A,B,C)
+  python tune.py --layouts row_major,col_major,row_major r,r,c
 
   # Different GPU architecture
   python tune.py --gpu-arch gfx1103
         """)
 
+    parser.add_argument('--input', '-i',
+                       help='Input JSON file to load existing configurations (will be used as baselines)')
     parser.add_argument('--sizes', nargs='*',
                        help='Matrix sizes as M,N,K (e.g., 1024,1024,1024 2048,2048,2048)')
     parser.add_argument('--layouts', nargs='*',
-                       help='Matrix (A,B,C) layouts as A,B,C (e.g., r,r,r c,c,c or row_major,col_major,row_major)')
+                       help='Matrix (A,B,C) layouts as A,B,C (e.g., row_major,col_major,row_major or r,c,r)')
     parser.add_argument('--baselines', nargs='*',
-                       help='Baseline configs as block_size,block_m,block_n,block_k,warp_tile_m_count,warp_tile_n_count,thread_tile_m,thread_tile_n,threads_n')
+                       help='Baseline configs as block_size,block_m,block_n,block_k,warp_tile_m_count,warp_tile_n_count,thread_tile_m,thread_tile_n,threads_n (overrides input file)')
     parser.add_argument('--budget', type=int, default=150,
-                       help='Evaluation budget per (A,B,C) layout combination (default: 150)')
+                       help='Evaluation budget per layout combination (default: 150)')
     parser.add_argument('--seed', type=int, default=42,
                        help='Random seed for reproducible results (default: 42)')
     parser.add_argument('--gpu-arch', default='gfx1100', help='GPU architecture (default: gfx1100)')
@@ -504,6 +584,11 @@ Examples:
                        help='Output JSON file (default: gemm_config_tuned.json)')
 
     args = parser.parse_args()
+
+    # Load existing configurations if provided
+    existing_configs_raw = None
+    if args.input:
+        existing_configs_raw = load_existing_json(args.input)
 
     # Parse inputs
     if args.sizes:
@@ -522,10 +607,16 @@ Examples:
         # All 8 combinations of (A,B,C) layouts
         abc_layouts = [(a, b, c) for a in [0, 1] for b in [0, 1] for c in [0, 1]]
 
+    # Determine baselines: explicit > None (will use existing configs per-problem) > default
     if args.baselines:
         baselines = parse_baselines(args.baselines)
+        print("Using explicit baselines (overriding input file)")
+    elif args.input and existing_configs_raw:
+        baselines = None  # Will use existing configs as baselines per-problem
+        print("Using existing configurations as baselines")
     else:
-        baselines = None
+        baselines = None  # Will use default baselines
+        print("Using default baselines")
 
     print("Optuna TPE GEMM Tuner")
     print(f"Random seed: {args.seed}")
@@ -540,7 +631,7 @@ Examples:
         layout_names = ["r" if x == 0 else "c" for x in layout]
         print(f"  {i+1}: A={layout_names[0]}, B={layout_names[1]}, C={layout_names[2]}")
 
-    if baselines:
+    if args.baselines:
         print(f"Custom baselines: {len(baselines)}")
         for baseline in baselines:
             print(f"  {baseline}")
@@ -552,11 +643,15 @@ Examples:
         random_seed=args.seed
     )
 
-    results = tuner.tune_all(sizes=sizes, abc_layouts=abc_layouts, max_evaluations=args.budget)
+    results = tuner.tune_all(sizes=sizes, abc_layouts=abc_layouts, max_evaluations=args.budget,
+                            existing_configs=existing_configs_raw)
+
+    # Merge with existing configurations
+    merged_results = merge_results(existing_configs_raw, results)
 
     # Generate configuration JSON
     configs = []
-    for size_results in results.values():
+    for size_results in merged_results.values():
         for result in size_results.values():
             config = {
                 "range": {"M": result["M"], "N": result["N"], "K": result["K"]},
@@ -603,7 +698,17 @@ Examples:
         print(f"\nTotal evaluations: {total_evaluations}")
         print(f"Average evaluations per (A,B,C) problem: {avg_evals:.1f}")
         print(f"Average space coverage: {avg_coverage:.2f}%")
-    print(f"Configuration saved to: {args.output}")
+
+    # Show what was preserved vs updated
+    if existing_configs_raw:
+        total_configs = sum(len(layout_dict) for layout_dict in merged_results.values())
+        updated_configs = sum(len(layout_dict) for layout_dict in results.values())
+        preserved_configs = total_configs - updated_configs
+        print(f"\nConfigurations preserved from input: {preserved_configs}")
+        print(f"Configurations updated/added: {updated_configs}")
+        print(f"Total configurations in output: {total_configs}")
+
+    print(f"\nConfiguration saved to: {args.output}")
 
 if __name__ == "__main__":
     main()

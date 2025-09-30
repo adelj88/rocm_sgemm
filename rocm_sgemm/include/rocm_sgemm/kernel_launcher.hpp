@@ -25,142 +25,77 @@
 #ifndef ROCM_SGEMM_KERNEL_LAUNCHER_HPP
 #define ROCM_SGEMM_KERNEL_LAUNCHER_HPP
 
-#include "kernel/kernel.hpp"
 #include <rocm_sgemm/kernel/config_generated.hpp>
+#include <rocm_sgemm/kernel_lookup.hpp>
+#include <stdexcept>
 
 namespace rocm_sgemm
 {
 
-namespace detail
-{
-
-// Helper to launch kernel with aligned/unaligned selection
-template<class T,
-         m_layout layout_C,
-         m_layout layout_A,
-         m_layout layout_B,
-         int      block_size,
-         int      block_m,
-         int      block_n,
-         int      block_k,
-         int      warp_tile_m_count,
-         int      warp_tile_n_count,
-         int      thread_tile_m,
-         int      thread_tile_n,
-         int      threads_n>
-__host__ void launch_kernel_impl(T*           C,
-                                 const T*     A,
-                                 const T*     B,
-                                 size_t       M,
-                                 size_t       N,
-                                 size_t       K,
-                                 dim3         grid_dim,
-                                 dim3         block_dim,
-                                 hipStream_t& stream)
-{
-    bool is_aligned = (M % block_m == 0 && N % block_n == 0);
-
-    if(is_aligned)
-    {
-        kernel_gemm<T,
-                    layout_C,
-                    layout_A,
-                    layout_B,
-                    block_size,
-                    block_m,
-                    block_n,
-                    block_k,
-                    warp_tile_m_count,
-                    warp_tile_n_count,
-                    thread_tile_m,
-                    thread_tile_n,
-                    threads_n,
-                    1><<<grid_dim, block_dim, 0, stream>>>(C, A, B, M, N, K);
-    }
-    else
-    {
-        kernel_gemm<T,
-                    layout_C,
-                    layout_A,
-                    layout_B,
-                    block_size,
-                    block_m,
-                    block_n,
-                    block_k,
-                    warp_tile_m_count,
-                    warp_tile_n_count,
-                    thread_tile_m,
-                    thread_tile_n,
-                    threads_n,
-                    0><<<grid_dim, block_dim, 0, stream>>>(C, A, B, M, N, K);
-    }
-}
-
-// Template to generate dispatch table
-template<class T, m_layout layout_C, m_layout layout_A, m_layout layout_B, size_t... I>
-constexpr auto make_dispatch_table(std::index_sequence<I...>)
-{
-    using kernel_func
-        = void (*)(T*, const T*, const T*, size_t, size_t, size_t, dim3, dim3, hipStream_t&);
-
-    return std::array<kernel_func, sizeof...(I)>{
-        [](T*           C,
-           const T*     A,
-           const T*     B,
-           size_t       M,
-           size_t       N,
-           size_t       K,
-           dim3         grid_dim,
-           dim3         block_dim,
-           hipStream_t& stream)
-        {
-            launch_kernel_impl<T,
-                               layout_C,
-                               layout_A,
-                               layout_B,
-                               std::get<0>(kernel_configs[I]),
-                               std::get<1>(kernel_configs[I]),
-                               std::get<2>(kernel_configs[I]),
-                               std::get<3>(kernel_configs[I]),
-                               std::get<4>(kernel_configs[I]),
-                               std::get<5>(kernel_configs[I]),
-                               std::get<6>(kernel_configs[I]),
-                               std::get<7>(kernel_configs[I]),
-                               std::get<8>(kernel_configs[I])>(C,
-                                                               A,
-                                                               B,
-                                                               M,
-                                                               N,
-                                                               K,
-                                                               grid_dim,
-                                                               block_dim,
-                                                               stream);
-        }...};
-}
-
-} // namespace detail
-
 template<class T, m_layout layout_C, m_layout layout_A, m_layout layout_B>
 struct kernel_launcher
 {
-    static constexpr auto dispatch_table
-        = detail::make_dispatch_table<T, layout_C, layout_A, layout_B>(
-            std::make_index_sequence<KERNEL_VARIANTS>{});
+    using kernel_func_ptr = void (*)(T*, const T*, const T*, int, int, int);
 
-    static void launch(const gemm_params& params,
-                       T*                 C,
-                       const T*           A,
-                       const T*           B,
-                       size_t             M,
-                       size_t             N,
-                       size_t             K,
-                       dim3               grid_dim,
-                       dim3               block_dim,
-                       hipStream_t&       stream)
+    static void launch(size_t       config_idx,
+                       T*           C,
+                       const T*     A,
+                       const T*     B,
+                       size_t       M,
+                       size_t       N,
+                       size_t       K,
+                       int          block_m,
+                       int          block_n,
+                       dim3         grid_dim,
+                       dim3         block_dim,
+                       hipStream_t& stream)
     {
-        // Get index from params and dispatch to correct kernel
-        size_t idx = get_kernel_config_index(params);
-        dispatch_table[idx](C, A, B, M, N, K, grid_dim, block_dim, stream);
+        // Compute layout index (0-7) based on (A,B,C) layout combination
+        constexpr size_t layout_idx
+            = (layout_A == m_layout::row_major && layout_B == m_layout::row_major
+               && layout_C == m_layout::row_major)
+                  ? 0 // rrr
+              : (layout_A == m_layout::row_major && layout_B == m_layout::row_major
+                 && layout_C == m_layout::col_major)
+                  ? 1 // rrc
+              : (layout_A == m_layout::row_major && layout_B == m_layout::col_major
+                 && layout_C == m_layout::row_major)
+                  ? 2 // rcr
+              : (layout_A == m_layout::row_major && layout_B == m_layout::col_major
+                 && layout_C == m_layout::col_major)
+                  ? 3 // rcc
+              : (layout_A == m_layout::col_major && layout_B == m_layout::row_major
+                 && layout_C == m_layout::row_major)
+                  ? 4 // crr
+              : (layout_A == m_layout::col_major && layout_B == m_layout::row_major
+                 && layout_C == m_layout::col_major)
+                  ? 5 // crc
+              : (layout_A == m_layout::col_major && layout_B == m_layout::col_major
+                 && layout_C == m_layout::row_major)
+                  ? 6 // ccr
+              : (layout_A == m_layout::col_major && layout_B == m_layout::col_major
+                 && layout_C == m_layout::col_major)
+                  ? 7 // ccc
+                  : 0;
+
+        // Runtime alignment check (like the old code)
+        bool   is_aligned    = (M % block_m == 0 && N % block_n == 0);
+        size_t alignment_idx = is_aligned ? 1 : 0;
+
+        // Lookup kernel function pointer from static table
+        void* kernel_ptr = lookup_kernel(config_idx, layout_idx, alignment_idx);
+
+        // Check for null pointer (kernel not available for this config/layout/alignment combination)
+        if(kernel_ptr == nullptr)
+        {
+            // This should not happen if config generation is working correctly
+            throw std::runtime_error(
+                "No kernel available for the requested configuration, layout, and alignment");
+        }
+
+        // Cast to correct function pointer type and launch
+        auto kernel_func = reinterpret_cast<kernel_func_ptr>(kernel_ptr);
+        kernel_func<<<grid_dim, block_dim, 0, stream>>>(C, A, B, M, N, K);
     }
 };
 

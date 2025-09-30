@@ -149,42 +149,16 @@ public:
     }
 };
 
-// TODO: Fix condition when min_block_bytes is smaller than sizeof(float); not important given
-// the kernel targets a specific tile_bytes that is always larger than sizeof(float)
 template<class T, int TILE>
 __device__ __forceinline__ void load_matrix(fragment<T, TILE>& frag, const T* data, int M, int N)
 {
-    constexpr int tile_bytes = TILE * sizeof(T);
+    using type        = typename type_selector<T>::type;
+    using vector_type = type __attribute__((ext_vector_type(TILE)));
 
-    // Find largest power of 2 (in T units) that divides tile_bytes
-    constexpr int element_alignment = tile_bytes / sizeof(T); // This is just TILE
-    constexpr int calculated_width  = element_alignment & (-element_alignment);
-    constexpr int max_vector_width  = 32 / sizeof(T); // 32 bytes = 2 * 128-bit loads
-    constexpr int actual_load_width
-        = (calculated_width > max_vector_width) ? max_vector_width : calculated_width;
+    const vector_type* src_ptr  = reinterpret_cast<const vector_type*>(data);
+    vector_type*       dest_ptr = reinterpret_cast<vector_type*>(&frag.get());
 
-    if constexpr(actual_load_width == 1)
-    {
-        auto& tmp = frag.get();
-        for(int i = 0; i < TILE; ++i)
-        {
-            tmp[i] = data[i];
-        }
-    }
-    else
-    {
-        using vector_type          = T __attribute__((ext_vector_type(actual_load_width)));
-        constexpr int vector_width = (sizeof(vector_type) / sizeof(T));
-        constexpr int width        = (TILE + vector_width - 1) / vector_width;
-
-        const vector_type* src_ptr  = reinterpret_cast<const vector_type*>(data);
-        vector_type*       dest_ptr = reinterpret_cast<vector_type*>(&frag.get());
-
-        for(int i = 0; i < width; ++i)
-        {
-            dest_ptr[i] = src_ptr[i];
-        }
-    }
+    *dest_ptr = *src_ptr;
 }
 
 } // namespace rocm_sgemm

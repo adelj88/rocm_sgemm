@@ -188,27 +188,7 @@ std::string generate_kernel_source(const config_params& config, size_t M, size_t
     bool is_aligned = (M % config.block_m == 0 && N % config.block_n == 0);
 
     kernel_source << R"(
-// Define missing std functions for hipRTC
-namespace std
-{
-    template<class T>
-    __device__ __host__ constexpr const T& min(const T& a, const T& b)
-    {
-        return (b < a) ? b : a;
-    }
-
-    template<class T>
-    __device__ __host__ constexpr const T& max(const T& a, const T& b)
-    {
-        return (a < b) ? b : a;
-    }
-}
-
-#include <kernel/common.hpp>
-#include <kernel/fragment.hpp>
 #include <kernel/kernel.hpp>
-#include <kernel/load.hpp>
-#include <kernel/mapping.hpp>
 
 namespace rocm_sgemm
 {
@@ -217,7 +197,8 @@ namespace rocm_sgemm
 )";
 
     // Single template instantiation with calculated alignment
-    kernel_source << "template __global__ void kernel_gemm<float, "
+    kernel_source << "template __global__ __launch_bounds__(" << config.block_size
+                  << ") void kernel_gemm<float, "
                   << (config.layout_c == 0 ? "m_layout::row_major" : "m_layout::col_major") << ", "
                   << (config.layout_a == 0 ? "m_layout::row_major" : "m_layout::col_major") << ", "
                   << (config.layout_b == 0 ? "m_layout::row_major" : "m_layout::col_major") << ", "
@@ -422,24 +403,6 @@ void run_kernel_benchmark(benchmark::State& state)
                     const_cast<int*>(reinterpret_cast<const int*>(&N)),
                     const_cast<int*>(reinterpret_cast<const int*>(&K))};
 
-    // Warmup
-    for(int i = 0; i < 5; ++i)
-    {
-        HIP_CHECK(hipModuleLaunchKernel(g_kernel_func,
-                                        grid_dim.x,
-                                        grid_dim.y,
-                                        grid_dim.z,
-                                        block_dim.x,
-                                        block_dim.y,
-                                        block_dim.z,
-                                        0,
-                                        g_test_data->stream,
-                                        args,
-                                        nullptr));
-        HIP_CHECK(hipPeekAtLastError());
-    }
-    HIP_CHECK(hipStreamSynchronize(g_test_data->stream));
-
     // Benchmark loop
     for(auto _ : state)
     {
@@ -458,12 +421,12 @@ void run_kernel_benchmark(benchmark::State& state)
                                         nullptr));
         HIP_CHECK(hipPeekAtLastError());
 
-        float elapsed_time = timer.stop(g_test_data->stream);
-        HIP_CHECK(hipDeviceSynchronize());
+        double elapsed_time = timer.stop(g_test_data->stream);
 
         double seconds = elapsed_time / 1000.0;
         state.SetIterationTime(seconds);
     }
+    HIP_CHECK(hipDeviceSynchronize());
 }
 
 int main(int argc, char* argv[])
@@ -523,7 +486,9 @@ int main(int argc, char* argv[])
     // Register the benchmark
     benchmark::RegisterBenchmark("dynamic_kernel", run_kernel_benchmark)
         ->UseManualTime()
-        ->Unit(benchmark::kMillisecond);
+        ->Unit(benchmark::kMillisecond)
+        ->Repetitions(1) // Repeat 5 times
+        ->ReportAggregatesOnly(true);
 
     // Run benchmark
     benchmark::RunSpecifiedBenchmarks();
