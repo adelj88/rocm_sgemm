@@ -188,6 +188,7 @@ std::string generate_kernel_source(const config_params& config, size_t M, size_t
     bool is_aligned = (M % config.block_m == 0 && N % config.block_n == 0);
 
     kernel_source << R"(
+#define std __hip_internal
 #include <kernel/kernel.hpp>
 
 namespace rocm_sgemm
@@ -316,9 +317,16 @@ bool compile_kernel(const config_params& config, size_t M, size_t N)
     // Add name expression BEFORE compilation
     HIPRTC_CHECK(hiprtcAddNameExpression(prog, kernel_name.c_str()));
 
+    std::string rocm_path    = std::string(ROCM_INCLUDE_DIR);
+    std::string rocm_include = "-I" + rocm_path + "/include";
+
     // Set compilation options
-    std::vector<const char*> options
-        = {"-O3", "-ffast-math", "-mcumode", "-std=c++17", config.gpu_arch.c_str()};
+    std::vector<const char*> options = {"-O3",
+                                        "-ffast-math",
+                                        "-mcumode",
+                                        "-std=c++17",
+                                        config.gpu_arch.c_str(),
+                                        rocm_include.c_str()};
 
     // Compile the program
     hiprtcResult compile_result = hiprtcCompileProgram(prog, options.size(), options.data());
