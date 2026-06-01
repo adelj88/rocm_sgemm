@@ -155,22 +155,42 @@ struct test_data
     }
 };
 
-// Configuration parameters
+// Configuration parameters (generators; block dimensions are derived on demand).
 struct config_params
 {
-    int         block_size;
-    int         block_m;
-    int         block_n;
-    int         block_k;
+    int         warps_m;
+    int         warps_n;
     int         warp_tile_m_count;
     int         warp_tile_n_count;
     int         thread_tile_m;
     int         thread_tile_n;
     int         threads_n;
+    int         block_k;
+    int         single_buffer;
+    int         swizzle;
     int         layout_a; // 0=row_major, 1=col_major
     int         layout_b; // 0=row_major, 1=col_major
     int         layout_c; // 0=row_major, 1=col_major
     std::string gpu_arch;
+
+    // Block tile derived from the generators, matching the kernel's compile-time derivation.
+    static constexpr int wave_size = 32;
+    int                  threads_m() const
+    {
+        return wave_size / threads_n;
+    }
+    int block_m() const
+    {
+        return warps_m * warp_tile_m_count * thread_tile_m * threads_m();
+    }
+    int block_n() const
+    {
+        return warps_n * warp_tile_n_count * thread_tile_n * threads_n;
+    }
+    int block_size() const
+    {
+        return warps_m * warps_n * wave_size;
+    }
 };
 
 // Global test data and config
@@ -185,7 +205,7 @@ std::string generate_kernel_source(const config_params& config, size_t M, size_t
     std::stringstream kernel_source;
 
     // Calculate alignment on host side
-    bool is_aligned = (M % config.block_m == 0 && N % config.block_n == 0);
+    bool is_aligned = (M % config.block_m() == 0 && N % config.block_n() == 0);
 
     kernel_source << R"(
 #define std __hip_internal
@@ -194,21 +214,15 @@ std::string generate_kernel_source(const config_params& config, size_t M, size_t
 namespace rocm_sgemm
 {
 
-// Extern template declaration - with calculated alignment
-)";
-
-    // Single template instantiation with calculated alignment
-    kernel_source << "template __global__ __launch_bounds__(" << config.block_size
-                  << ") void kernel_gemm<float, "
+template struct kernel_gemm_impl<float, )"
                   << (config.layout_c == 0 ? "m_layout::row_major" : "m_layout::col_major") << ", "
                   << (config.layout_a == 0 ? "m_layout::row_major" : "m_layout::col_major") << ", "
                   << (config.layout_b == 0 ? "m_layout::row_major" : "m_layout::col_major") << ", "
-                  << config.block_size << ", " << config.block_m << ", " << config.block_n << ", "
-                  << config.block_k << ", " << config.warp_tile_m_count << ", "
-                  << config.warp_tile_n_count << ", " << config.thread_tile_m << ", "
-                  << config.thread_tile_n << ", " << config.threads_n << ", "
-                  << (is_aligned ? "1" : "0") << ">("
-                  << "float* C, const float* A, const float* B, int M, int N, int K);\n\n";
+                  << config.warps_m << ", " << config.warps_n << ", " << config.warp_tile_m_count
+                  << ", " << config.warp_tile_n_count << ", " << config.thread_tile_m << ", "
+                  << config.thread_tile_n << ", " << config.threads_n << ", " << config.block_k
+                  << ", " << config.single_buffer << ", " << config.swizzle << ", "
+                  << (is_aligned ? "1" : "0") << ">;\n\n";
 
     kernel_source << "} // namespace rocm_sgemm\n";
 
@@ -242,7 +256,7 @@ bool compile_kernel(const config_params& config, size_t M, size_t N)
     }
 
     // Calculate alignment for this specific problem size
-    bool is_aligned = (M % config.block_m == 0 && N % config.block_n == 0);
+    bool is_aligned = (M % config.block_m() == 0 && N % config.block_n() == 0);
 
     // Generate kernel source with calculated alignment
     std::string kernel_source = generate_kernel_source(config, M, N);
@@ -295,9 +309,9 @@ bool compile_kernel(const config_params& config, size_t M, size_t N)
                                      header_contents.data(),
                                      header_names.data()));
 
-    // Build the kernel name expression (with calculated alignment)
+    // Build the kernel name expression: kernel_gemm_impl<...>::run
     std::stringstream kernel_name_ss;
-    kernel_name_ss << "rocm_sgemm::kernel_gemm<float, "
+    kernel_name_ss << "rocm_sgemm::kernel_gemm_impl<float, "
                    << (config.layout_c == 0 ? "rocm_sgemm::m_layout::row_major"
                                             : "rocm_sgemm::m_layout::col_major")
                    << ", "
@@ -306,11 +320,11 @@ bool compile_kernel(const config_params& config, size_t M, size_t N)
                    << ", "
                    << (config.layout_b == 0 ? "rocm_sgemm::m_layout::row_major"
                                             : "rocm_sgemm::m_layout::col_major")
-                   << ", " << config.block_size << ", " << config.block_m << ", " << config.block_n
-                   << ", " << config.block_k << ", " << config.warp_tile_m_count << ", "
-                   << config.warp_tile_n_count << ", " << config.thread_tile_m << ", "
-                   << config.thread_tile_n << ", " << config.threads_n << ", "
-                   << (is_aligned ? "1" : "0") << ">";
+                   << ", " << config.warps_m << ", " << config.warps_n << ", "
+                   << config.warp_tile_m_count << ", " << config.warp_tile_n_count << ", "
+                   << config.thread_tile_m << ", " << config.thread_tile_n << ", "
+                   << config.threads_n << ", " << config.block_k << ", " << config.single_buffer
+                   << ", " << config.swizzle << ", " << (is_aligned ? "1" : "0") << ">::run";
 
     std::string kernel_name = kernel_name_ss.str();
 
@@ -324,7 +338,7 @@ bool compile_kernel(const config_params& config, size_t M, size_t N)
     std::vector<const char*> options = {"-O3",
                                         "-ffast-math",
                                         "-mcumode",
-                                        "-std=c++17",
+                                        "-std=c++20",
                                         config.gpu_arch.c_str(),
                                         rocm_include.c_str()};
 
@@ -396,11 +410,11 @@ void run_kernel_benchmark(benchmark::State& state)
     const size_t K = g_test_data->K;
 
     // Calculate grid dimensions
-    const int grid_m = (M + g_config.block_m - 1) / g_config.block_m;
-    const int grid_n = (N + g_config.block_n - 1) / g_config.block_n;
+    const int grid_m = (M + g_config.block_m() - 1) / g_config.block_m();
+    const int grid_n = (N + g_config.block_n() - 1) / g_config.block_n();
 
     dim3 grid_dim(grid_n * grid_m);
-    dim3 block_dim(g_config.block_size);
+    dim3 block_dim(g_config.block_size());
 
     gpu_timer timer;
 
@@ -439,15 +453,15 @@ void run_kernel_benchmark(benchmark::State& state)
 
 int main(int argc, char* argv[])
 {
-    if(argc != 17)
+    if(argc != 18)
     {
-        std::cerr
-            << "Usage: " << argv[0]
-            << " M N K block_size block_m block_n block_k warp_tile_m_count warp_tile_n_count "
-               "thread_tile_m thread_tile_n threads_n layout_a layout_b layout_c gpu_arch"
-            << std::endl;
-        std::cerr << "Example: " << argv[0]
-                  << " 4096 4096 4096 128 128 128 8 4 4 2 4 8 0 0 0 gfx1100" << std::endl;
+        std::cerr << "Usage: " << argv[0]
+                  << " M N K warps_m warps_n warp_tile_m_count warp_tile_n_count "
+                     "thread_tile_m thread_tile_n threads_n block_k single_buffer swizzle "
+                     "layout_a layout_b layout_c gpu_arch"
+                  << std::endl;
+        std::cerr << "Example: " << argv[0] << " 4096 4096 4096 4 1 4 4 2 4 8 8 0 8 0 0 0 gfx1100"
+                  << std::endl;
         return 1;
     }
 
@@ -456,19 +470,20 @@ int main(int argc, char* argv[])
     size_t N = std::atol(argv[2]);
     size_t K = std::atol(argv[3]);
 
-    g_config.block_size        = std::atoi(argv[4]);
-    g_config.block_m           = std::atoi(argv[5]);
-    g_config.block_n           = std::atoi(argv[6]);
-    g_config.block_k           = std::atoi(argv[7]);
-    g_config.warp_tile_m_count = std::atoi(argv[8]);
-    g_config.warp_tile_n_count = std::atoi(argv[9]);
-    g_config.thread_tile_m     = std::atoi(argv[10]);
-    g_config.thread_tile_n     = std::atoi(argv[11]);
-    g_config.threads_n         = std::atoi(argv[12]);
-    g_config.layout_a          = std::atoi(argv[13]);
-    g_config.layout_b          = std::atoi(argv[14]);
-    g_config.layout_c          = std::atoi(argv[15]);
-    std::string tmp            = argv[16];
+    g_config.warps_m           = std::atoi(argv[4]);
+    g_config.warps_n           = std::atoi(argv[5]);
+    g_config.warp_tile_m_count = std::atoi(argv[6]);
+    g_config.warp_tile_n_count = std::atoi(argv[7]);
+    g_config.thread_tile_m     = std::atoi(argv[8]);
+    g_config.thread_tile_n     = std::atoi(argv[9]);
+    g_config.threads_n         = std::atoi(argv[10]);
+    g_config.block_k           = std::atoi(argv[11]);
+    g_config.single_buffer     = std::atoi(argv[12]);
+    g_config.swizzle           = std::atoi(argv[13]);
+    g_config.layout_a          = std::atoi(argv[14]);
+    g_config.layout_b          = std::atoi(argv[15]);
+    g_config.layout_c          = std::atoi(argv[16]);
+    std::string tmp            = argv[17];
     g_config.gpu_arch          = "--offload-arch=" + tmp;
 
     // Initialize test data
@@ -481,12 +496,13 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    std::cout << "Successfully compiled kernel for config: " << g_config.block_size << ","
-              << g_config.block_m << "," << g_config.block_n << "," << g_config.block_k << ","
-              << g_config.warp_tile_m_count << "," << g_config.warp_tile_n_count << ","
-              << g_config.thread_tile_m << "," << g_config.thread_tile_n << ","
-              << g_config.threads_n << "," << g_config.layout_a << "," << g_config.layout_b << ","
-              << g_config.layout_c << std::endl;
+    std::cout << "Successfully compiled kernel for config: " << g_config.warps_m << ","
+              << g_config.warps_n << "," << g_config.warp_tile_m_count << ","
+              << g_config.warp_tile_n_count << "," << g_config.thread_tile_m << ","
+              << g_config.thread_tile_n << "," << g_config.threads_n << "," << g_config.block_k
+              << "," << g_config.single_buffer << "," << g_config.swizzle << ","
+              << g_config.layout_a << "," << g_config.layout_b << "," << g_config.layout_c
+              << std::endl;
 
     // Initialize benchmark
     benchmark::Initialize(&argc, argv);

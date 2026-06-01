@@ -1,5 +1,11 @@
-#include <rocm_sgemm/gemm.hpp>
+#include <rocm_sgemm/kernel_loader.hpp>
 #include <test.hpp>
+
+inline rocm_sgemm::loader& sgemm_loader()
+{
+    static rocm_sgemm::loader instance;
+    return instance;
+}
 
 template<m_layout layout_A, m_layout layout_B, m_layout layout_C>
 struct LayoutWrapper
@@ -57,15 +63,16 @@ protected:
         HIP_CHECK(hipDeviceSynchronize());
 
         // Execute the matrix multiplication on GPU
-        rocm_sgemm::gemm<static_cast<rocm_sgemm::m_layout>(LayoutT::c_layout),
-                         static_cast<rocm_sgemm::m_layout>(LayoutT::a_layout),
-                         static_cast<rocm_sgemm::m_layout>(LayoutT::b_layout)>(d_C,
-                                                                                 d_A,
-                                                                                 d_B,
-                                                                                 M,
-                                                                                 N,
-                                                                                 K,
-                                                                                 stream);
+        sgemm_loader()
+            .gemm<static_cast<rocm_sgemm::m_layout>(LayoutT::c_layout),
+                  static_cast<rocm_sgemm::m_layout>(LayoutT::a_layout),
+                  static_cast<rocm_sgemm::m_layout>(LayoutT::b_layout)>(d_C,
+                                                                        d_A,
+                                                                        d_B,
+                                                                        M,
+                                                                        N,
+                                                                        K,
+                                                                        stream);
         HIP_CHECK(hipPeekAtLastError());
         HIP_CHECK(hipDeviceSynchronize());
 

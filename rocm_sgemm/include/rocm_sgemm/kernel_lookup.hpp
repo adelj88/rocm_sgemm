@@ -30,12 +30,14 @@
 namespace rocm_sgemm
 {
 
-// Lookup function: returns kernel function pointer from static 3D table
-// Parameters:
-//   config_idx: Configuration index (from find_best_config)
-//   layout_idx: Layout combination index (0-7 for ABC combinations)
-//               0=rrr, 1=rrc, 2=rcr, 3=rcc, 4=crr, 5=crc, 6=ccr, 7=ccc
-//   alignment_idx: Alignment index (0=unaligned, 1=aligned)
+/**
+ * @brief Retrieves the kernel function pointer from the pre-compiled static table.
+ *
+ * @param config_idx Configuration index (obtained from `find_best_config`).
+ * @param layout_idx Layout combination index (0=rrr, 1=rrc, 2=rcr, 3=rcc, 4=crr, 5=crc, 6=ccr, 7=ccc).
+ * @param alignment_idx Alignment index (0=unaligned, 1=aligned).
+ * @return void* Pointer to the matching kernel function, or nullptr if not available.
+ */
 void* lookup_kernel(size_t config_idx, size_t layout_idx, size_t alignment_idx);
 
 } // namespace rocm_sgemm

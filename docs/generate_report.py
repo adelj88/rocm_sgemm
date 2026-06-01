@@ -3,8 +3,6 @@
 import re
 import argparse
 import sys
-import subprocess
-import tempfile
 from pathlib import Path
 from collections import defaultdict
 import matplotlib.pyplot as plt
@@ -96,73 +94,6 @@ class BenchmarkParser:
             print(f"Total lines processed: {line_count}, results found: {len(self.results)}")
 
         return self.results
-
-def run_benchmark(binary_path, shapes=None, batch_count=1, verbose=False):
-    """
-    Run a benchmark binary and return its output.
-
-    Args:
-        binary_path: Path to the benchmark binary
-        shapes: Colon-separated string of matrix shapes (e.g., "1024:2048:1024,2048,512")
-        batch_count: Batch count for benchmarks
-        verbose: Print benchmark output to console
-
-    Returns:
-        Benchmark output as string
-    """
-    if not Path(binary_path).exists():
-        raise FileNotFoundError(f"Benchmark binary not found: {binary_path}")
-
-    # Build command
-    cmd = [str(binary_path)]
-
-    if shapes:
-        cmd.extend(["--shapes", shapes])
-
-    if batch_count != 1:
-        cmd.extend(["--batch_count", str(batch_count)])
-
-    print(f"Running: {' '.join(cmd)}")
-
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=300  # 5 minute timeout
-        )
-
-        # Check return code manually
-        if result.returncode != 0:
-            print(f"Warning: Benchmark returned non-zero exit code: {result.returncode}")
-            print(f"stderr: {result.stderr}")
-            # Don't exit, try to parse output anyway
-
-        output = result.stdout
-
-        # Check if output is in stderr instead
-        if not output.strip() and result.stderr.strip():
-            if verbose:
-                print("Note: Output found in stderr, using that instead")
-            output = result.stderr
-
-        if verbose:
-            print(output)
-
-        if not output.strip():
-            print("Warning: Benchmark produced no output!")
-            print(f"stderr: {result.stderr}")
-            print(f"returncode: {result.returncode}")
-
-        return output
-
-    except subprocess.TimeoutExpired:
-        print(f"Error: Benchmark timed out after 300 seconds")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error running benchmark: {e}")
-        sys.exit(1)
 
 def format_matrix_size(m, n, k):
     """Format matrix size string (e.g., 1024x1024x1024 or 4096x2048x64)."""
@@ -360,61 +291,40 @@ def generate_performance_plots(sgemm_results, rocblas_results, output_file, titl
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Generate SGEMM benchmark report by running binaries',
+        description='Generate SGEMM benchmark report from pre-run benchmark outputs',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run benchmarks with default shapes
-  python generate_report_sgemm.py \\
-      --sgemm-bin ./build/bench/bench_float \\
-      --rocblas-bin ./build/bench/bench_rocblas \\
+  # Generate report from saved outputs
+  python generate_report.py \\
+      --sgemm-output bench_sgemm.txt \\
+      --rocblas-output bench_rocblas.txt \\
       --gpu "AMD Radeon RX 7900 GRE" \\
       --os "Ubuntu 24.04.1 LTS" \\
       --rocm-version "6.4.1"
 
-  # Custom square matrix shapes (colon-separated)
-  python generate_report_sgemm.py \\
-      --sgemm-bin ./build/bench/bench_float \\
-      --rocblas-bin ./build/bench/bench_rocblas \\
-      --shapes "512:1024:2048:4096" \\
-      --gpu "AMD Radeon RX 7900 GRE"
+  # Custom output files
+  python generate_report.py \\
+      --sgemm-output results/sgemm_out.txt \\
+      --rocblas-output results/rocblas_out.txt \\
+      --gpu "AMD Radeon RX 7900 GRE" \\
+      --title "Custom FP32 Benchmarks" \\
+      --markdown-output custom_report.md \\
+      --plot-output custom_plot.png
 
-  # Mix of square and rectangular matrices (colon-separated)
-  python generate_report_sgemm.py \\
-      --sgemm-bin ./build/bench/bench_float \\
-      --rocblas-bin ./build/bench/bench_rocblas \\
-      --shapes "1024:2048:1024,2048,512:2048,1024,1024:4096,4096,2048" \\
-      --title "Mixed Matrix FP32 Performance" \\
-      --gpu "AMD Radeon RX 7900 GRE"
-
-  # Save benchmark outputs for later analysis
-  python generate_report_sgemm.py \\
-      --sgemm-bin ./build/bench/bench_float \\
-      --rocblas-bin ./build/bench/bench_rocblas \\
-      --shapes "1024:2048:4096:8192" \\
-      --save-outputs \\
-      --gpu "AMD Radeon RX 7900 GRE"
-
-  # Batch count and verbose output
-  python generate_report_sgemm.py \\
-      --sgemm-bin ./build/bench/bench_float \\
-      --rocblas-bin ./build/bench/bench_rocblas \\
-      --batch-count 4 \\
-      --verbose \\
-      --gpu "AMD Radeon RX 7900 GRE"
+  # Skip plot generation
+  python generate_report.py \\
+      --sgemm-output bench_sgemm.txt \\
+      --rocblas-output bench_rocblas.txt \\
+      --gpu "AMD Radeon RX 7900 GRE" \\
+      --no-plot
         """)
 
-    # Input binaries
-    parser.add_argument('--sgemm-bin', required=True,
-                       help='Path to rocm_sgemm benchmark binary')
-    parser.add_argument('--rocblas-bin', required=True,
-                       help='Path to rocBLAS benchmark binary')
-
-    # Benchmark configuration
-    parser.add_argument('--shapes',
-                       help='Colon-separated list of matrix shapes (e.g., "1024:2048" or "1024:2048:1024,2048,512:4096,4096,2048")')
-    parser.add_argument('--batch-count', type=int, default=1,
-                       help='Batch count for benchmarks (default: 1)')
+    # Input files
+    parser.add_argument('--sgemm-output', required=True,
+                       help='Path to rocm_sgemm benchmark output file')
+    parser.add_argument('--rocblas-output', required=True,
+                       help='Path to rocBLAS benchmark output file')
 
     # Report configuration
     parser.add_argument('--title', default='FP32 SGEMM Performance Benchmarks',
@@ -431,8 +341,6 @@ Examples:
                        help='Output markdown file (default: sgemm_performance.md)')
     parser.add_argument('--plot-output', default='sgemm_performance_plot.png',
                        help='Output plot file (default: sgemm_performance_plot.png)')
-    parser.add_argument('--save-outputs', action='store_true',
-                       help='Save raw benchmark outputs to files')
     parser.add_argument('--sgemm-output-file', default='bench_sgemm.txt',
                        help='File to save rocm_sgemm output (default: bench_sgemm.txt)')
     parser.add_argument('--rocblas-output-file', default='bench_rocblas.txt',
@@ -442,43 +350,31 @@ Examples:
                        help='Skip markdown generation')
     parser.add_argument('--no-plot', action='store_true',
                        help='Skip plot generation')
-    parser.add_argument('--verbose', action='store_true',
-                       help='Print benchmark output to console')
     parser.add_argument('--debug', action='store_true',
                        help='Print debug information for parsing')
 
     args = parser.parse_args()
 
-    # Run benchmarks
+    # Read benchmark outputs
     print("\n" + "="*80)
-    print("Running rocm_sgemm benchmark...")
+    print("Reading benchmark outputs...")
     print("="*80)
-    sgemm_output = run_benchmark(
-        args.sgemm_bin,
-        shapes=args.shapes,
-        batch_count=args.batch_count,
-        verbose=args.verbose
-    )
 
-    if args.save_outputs:
-        with open(args.sgemm_output_file, 'w') as f:
-            f.write(sgemm_output)
-        print(f"Saved rocm_sgemm output to {args.sgemm_output_file}")
+    try:
+        with open(args.sgemm_output, 'r') as f:
+            sgemm_output = f.read()
+        print(f"Read rocm_sgemm output from {args.sgemm_output}")
+    except FileNotFoundError:
+        print(f"Error: SGEMM output file not found: {args.sgemm_output}")
+        sys.exit(1)
 
-    print("\n" + "="*80)
-    print("Running rocBLAS benchmark...")
-    print("="*80)
-    rocblas_output = run_benchmark(
-        args.rocblas_bin,
-        shapes=args.shapes,
-        batch_count=args.batch_count,
-        verbose=args.verbose
-    )
-
-    if args.save_outputs:
-        with open(args.rocblas_output_file, 'w') as f:
-            f.write(rocblas_output)
-        print(f"Saved rocBLAS output to {args.rocblas_output_file}")
+    try:
+        with open(args.rocblas_output, 'r') as f:
+            rocblas_output = f.read()
+        print(f"Read rocBLAS output from {args.rocblas_output}")
+    except FileNotFoundError:
+        print(f"Error: rocBLAS output file not found: {args.rocblas_output}")
+        sys.exit(1)
 
     # Parse outputs
     print("\nParsing rocm_sgemm benchmark results...")

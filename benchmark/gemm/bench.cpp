@@ -24,9 +24,15 @@
 
 #include <bench.hpp>
 #include <iomanip>
-#include <rocm_sgemm/gemm.hpp>
+#include <rocm_sgemm/kernel_loader.hpp>
 #include <sstream>
 #include <string>
+
+inline rocm_sgemm::loader& sgemm_loader()
+{
+    static rocm_sgemm::loader instance;
+    return instance;
+}
 
 template<m_layout a_layout, m_layout b_layout, m_layout c_layout>
 void run_benchmark(benchmark::State& state, size_t M, size_t N, size_t K, size_t batch_count)
@@ -74,15 +80,10 @@ void run_benchmark(benchmark::State& state, size_t M, size_t N, size_t K, size_t
     for(auto _ : state)
     {
         timer.start(stream);
-        rocm_sgemm::gemm<static_cast<rocm_sgemm::m_layout>(c_layout),
-                         static_cast<rocm_sgemm::m_layout>(a_layout),
-                         static_cast<rocm_sgemm::m_layout>(b_layout)>(d_C,
-                                                                      d_A,
-                                                                      d_B,
-                                                                      M,
-                                                                      N,
-                                                                      K,
-                                                                      stream);
+        sgemm_loader()
+            .gemm<static_cast<rocm_sgemm::m_layout>(c_layout),
+                  static_cast<rocm_sgemm::m_layout>(a_layout),
+                  static_cast<rocm_sgemm::m_layout>(b_layout)>(d_C, d_A, d_B, M, N, K, stream);
         HIP_CHECK(hipPeekAtLastError());
         double elapsed_time = timer.stop(stream);
 
@@ -234,7 +235,7 @@ int main(int argc, char* argv[])
     // Initialize Google Benchmark with filtered arguments
     benchmark::Initialize(&filtered_argc, filtered_argv);
 
-    std::vector<benchmark::internal::Benchmark*> benchmarks;
+    std::vector<benchmark::Benchmark*> benchmarks;
 
     // Register benchmarks for all layout combinations and shapes
     for(const auto& shape : shapes)

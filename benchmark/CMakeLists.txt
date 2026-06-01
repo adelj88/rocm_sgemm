@@ -5,7 +5,7 @@ add_executable(bench_float gemm/bench.cpp)
 target_include_directories(bench_float PRIVATE ${PROJECT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Link HIP libraries
-target_link_libraries(bench_float PRIVATE rocm_sgemm benchmark::benchmark)
+target_link_libraries(bench_float PRIVATE rocm_sgemm_loader benchmark::benchmark)
 
 # Create an executable target
 add_executable(bench_rocblas rocblas/bench.cpp)

@@ -9,18 +9,15 @@ def generate_config_header(config_file, output_file):
     with open(config_file, 'r') as f:
         config = json.load(f)
 
-    # Extract unique configurations (9 parameters)
+    # Extract unique configurations (10 generator parameters)
     unique_configs = set()
     for conf in config['configurations']:
         cfg = conf['config']
-        unique_configs.add((
-            cfg['block_size'], cfg['block_m'], cfg['block_n'], cfg['block_k'],
-            cfg['warp_tile_m_count'], cfg['warp_tile_n_count'],
-            cfg['thread_tile_m'], cfg['thread_tile_n'], cfg['threads_n']
-        ))
+        unique_configs.add(_config_tuple_of(cfg))
 
-    # Always add default config if not present
-    default_config = (128, 128, 128, 8, 4, 4, 2, 4, 8)
+    # Always add default config if not present. Generator form of the original 128x128x8 default
+    # (warps(4,1) x warp_tile(4,4) x thread_tile(2,4) x threads_n=8 -> block_m=block_n=128, bs=128).
+    default_config = (4, 1, 4, 4, 2, 4, 8, 8, 0, 8)
     if default_config not in unique_configs:
         unique_configs.add(default_config)
 
@@ -48,13 +45,9 @@ def generate_config_header(config_file, output_file):
         if size_key not in size_abc_configs:
             size_abc_configs[size_key] = {}
 
-        cfg = conf['config']
-        config_tuple = (
-            cfg['block_size'], cfg['block_m'], cfg['block_n'], cfg['block_k'],
-            cfg['warp_tile_m_count'], cfg['warp_tile_n_count'],
-            cfg['thread_tile_m'], cfg['thread_tile_n'], cfg['threads_n']
-        )
-        config_idx = unique_configs.index(config_tuple)
+        cfg          = conf['config']
+        config_tuple = _config_tuple_of(cfg)
+        config_idx   = unique_configs.index(config_tuple)
 
         size_abc_configs[size_key][abc_layout_key] = config_idx
 
@@ -77,7 +70,7 @@ def generate_config_header(config_file, output_file):
 
     sorted_configs.sort(key=sort_key)
 
-    # Generate code (same as before - config header unchanged)
+    # Emit the config lookup header consumed by the runtime dispatch.
     code = f"""// Auto-generated file - DO NOT EDIT
 #ifndef ROCM_SGEMM_CONFIG_GENERATED_HPP
 #define ROCM_SGEMM_CONFIG_GENERATED_HPP
@@ -96,34 +89,36 @@ namespace rocm_sgemm
 // Number of unique kernel variants
 static constexpr size_t KERNEL_VARIANTS = {num_configs};
 
-// Configuration parameters for a specific problem size
+// Configuration parameters for a specific problem size. Block dimensions are derived from these
+// generators in the kernel (device) and at launch (host); they are never stored here.
 struct gemm_params
 {{
-    int block_size;
-    int block_m;
-    int block_n;
-    int block_k;
+    int warps_m;
+    int warps_n;
     int warp_tile_m_count;
     int warp_tile_n_count;
     int thread_tile_m;
     int thread_tile_n;
     int threads_n;
+    int block_k;
+    int single_buffer;
+    int swizzle;
 }};
 
 namespace detail
 {{
-    // Kernel configuration tuple (9 parameters)
-    using kernel_config = std::tuple<int, int, int, int, int, int, int, int, int>;
+    // Kernel configuration tuple (10 generator parameters)
+    using kernel_config = std::tuple<int, int, int, int, int, int, int, int, int, int>;
 
     // All unique kernel configurations
     static constexpr std::array<kernel_config, KERNEL_VARIANTS> kernel_configs = {{
 """
 
     # Generate config array
-    for i, (bs, bm, bn, bk, wmc, wnc, tm, tn, threads_n) in enumerate(unique_configs):
-        code += f"        std::tuple<int, int, int, int, int, int, int, int, int>{{{bs}, {bm}, {bn}, {bk}, {wmc}, {wnc}, {tm}, {tn}, {threads_n}}}"
+    for i, (wm, wn, wmc, wnc, tm, tn, threads_n, bk, single_buffer, swizzle) in enumerate(unique_configs):
+        code += f"        std::tuple<int, int, int, int, int, int, int, int, int, int>{{{wm}, {wn}, {wmc}, {wnc}, {tm}, {tn}, {threads_n}, {bk}, {single_buffer}, {swizzle}}}"
         code += "," if i < len(unique_configs) - 1 else ""
-        code += f" // Config {i}: bs={bs}, bm={bm}, bn={bn}, bk={bk}, wm={wmc}, wn={wnc}, tm={tm}, tn={tn}, threads_n={threads_n}\n"
+        code += f" // Config {i}: warps({wm},{wn}) warp_tile({wmc},{wnc}) thread_tile({tm},{tn}) threads_n={threads_n} bk={bk} single_buffer={single_buffer} swizzle={swizzle}\n"
 
     code += f"""    }};
 
@@ -290,15 +285,16 @@ constexpr gemm_params get_gemm_params(size_t m, size_t n, size_t k,
     // Get the configuration parameters
     const auto& config = detail::kernel_configs[config_idx];
     return gemm_params{
-        std::get<0>(config),  // block_size
-        std::get<1>(config),  // block_m
-        std::get<2>(config),  // block_n
-        std::get<3>(config),  // block_k
-        std::get<4>(config),  // warp_tile_m_count
-        std::get<5>(config),  // warp_tile_n_count
-        std::get<6>(config),  // thread_tile_m
-        std::get<7>(config),  // thread_tile_n
-        std::get<8>(config)   // threads_n
+        std::get<0>(config),  // warps_m
+        std::get<1>(config),  // warps_n
+        std::get<2>(config),  // warp_tile_m_count
+        std::get<3>(config),  // warp_tile_n_count
+        std::get<4>(config),  // thread_tile_m
+        std::get<5>(config),  // thread_tile_n
+        std::get<6>(config),  // threads_n
+        std::get<7>(config),  // block_k
+        std::get<8>(config),  // single_buffer
+        std::get<9>(config)   // swizzle
     };
 }
 
@@ -309,133 +305,139 @@ constexpr gemm_params get_gemm_params(size_t m, size_t n, size_t k,
     with open(output_file, 'w') as f:
         f.write(code)
 
+# =====================================================================================
+# Content-hash identity: filenames and getter symbols are derived from the config+layout
+# values (not list position), so inserting/reordering configs leaves unrelated files
+# untouched. Combined with write_if_changed + stale pruning, only genuinely changed
+# kernels recompile — the build stays incremental and never links a stale object.
+# =====================================================================================
+def config_signature(config_tuple, layout_str):
+    """Stable identity string for a (config, layout) from its parameter values."""
+    wm, wn, wmc, wnc, tm, tn, threads_n, bk, single_buffer, swizzle = config_tuple
+    return (f"wm{wm}_wn{wn}_wtm{wmc}_wtn{wnc}_tm{tm}_tn{tn}"
+            f"_thn{threads_n}_bk{bk}_sb{single_buffer}_sw{swizzle}_{layout_str}")
+
+
+def write_if_changed(filepath, content):
+    """Write only when content differs, so unchanged files keep their mtime and the build
+    system does not recompile them. Returns True if written."""
+    if filepath.exists() and filepath.read_text() == content:
+        return False
+    filepath.write_text(content)
+    return True
+
+
+def layout_str_of(layout):
+    """Three-letter layout tag, e.g. row/col/col -> 'rcc'."""
+    return f"{layout['A'][0]}{layout['B'][0]}{layout['C'][0]}"
+
+
+def _config_tuple_of(cfg):
+    return (
+        cfg['warps_m'], cfg['warps_n'],
+        cfg['warp_tile_m_count'], cfg['warp_tile_n_count'],
+        cfg['thread_tile_m'], cfg['thread_tile_n'], cfg['threads_n'],
+        cfg['block_k'], cfg.get('single_buffer', 0), cfg.get('swizzle', 8)
+    )
+
 
 def generate_kernel_sources(config_file, output_dir):
-    """Generate separate source files for each (config, layout, alignment) combination from JSON"""
+    """One source file per (config, layout) with both aligned and unaligned ::run getters."""
     with open(config_file, 'r') as f:
         config = json.load(f)
 
-    # Create output directory if it doesn't exist
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Track unique (config, layout) combinations
     seen_combinations = set()
     file_list = []
-    file_index = 0
+    written = 0
 
     for conf in config['configurations']:
-        cfg = conf['config']
+        cfg    = conf['config']
         layout = conf['layout']
-        range_info = conf['range']
-        M, N, K = range_info['M'], range_info['N'], range_info['K']
 
-        # Create key for this combination (without alignment)
-        config_key = (
-            cfg['block_size'], cfg['block_m'], cfg['block_n'], cfg['block_k'],
-            cfg['warp_tile_m_count'], cfg['warp_tile_n_count'],
-            cfg['thread_tile_m'], cfg['thread_tile_n'], cfg['threads_n'],
-            layout['A'], layout['B'], layout['C']
-        )
-
-        # Skip if we've already generated this combination
-        if config_key in seen_combinations:
+        config_tuple = _config_tuple_of(cfg)
+        layout_key   = (layout['A'], layout['B'], layout['C'])
+        if (config_tuple, layout_key) in seen_combinations:
             continue
-        seen_combinations.add(config_key)
+        seen_combinations.add((config_tuple, layout_key))
 
-        # Extract config parameters
-        bs, bm, bn, bk, wmc, wnc, tm, tn, threads_n = config_key[:9]
-        layout_a, layout_b, layout_c = config_key[9:]
+        wm, wn, wmc, wnc, tm, tn, threads_n, bk, single_buffer, swizzle = config_tuple
+        layout_a, layout_b, layout_c = layout_key
+        layout_str = layout_str_of(layout)
+        sig        = config_signature(config_tuple, layout_str)
 
-        # Layout string for function naming
-        layout_str = f"{layout_a[0]}{layout_b[0]}{layout_c[0]}"
+        filename = f"kernel_inst_{sig}.cpp"
+        filepath = output_path / filename
+        file_list.append(filename)
 
-        # Generate BOTH aligned and unaligned variants
-        for is_aligned, alignment_suffix in [(True, "aligned"), (False, "unaligned")]:
-            filename = f"kernel_inst_{file_index}.cpp"
-            filepath = output_path / filename
-            file_list.append(filename)
-
-            # Generate the source file with unique kernel name
-            code = f"""// Auto-generated kernel instantiation file - DO NOT EDIT
-// Config: bs={bs}, bm={bm}, bn={bn}, bk={bk}, wm={wmc}, wn={wnc}, tm={tm}, tn={tn}, threads_n={threads_n}
+        code = f"""// Auto-generated kernel instantiation file - DO NOT EDIT
+// Config: warps({wm},{wn}) warp_tile({wmc},{wnc}) thread_tile({tm},{tn}) threads_n={threads_n} bk={bk} single_buffer={single_buffer} swizzle={swizzle}
 // Layout: A={layout_a}, B={layout_b}, C={layout_c}
-// Size hint: {M}x{N}x{K}
-// Alignment: {alignment_suffix}
 
-// Rename kernel to avoid ODR violations across compilation units
-#define kernel_gemm kernel_gemm_inst_{file_index}
 #include <rocm_sgemm/kernel/kernel.hpp>
-#undef kernel_gemm
 
 namespace rocm_sgemm
 {{
 
-// Extern C getter for this specific configuration
-extern "C" void* get_kernel_inst_{file_index}_{layout_str}_{alignment_suffix}() {{
-    return (void*)&kernel_gemm_inst_{file_index}<float,
+extern "C" void* get_kernel_inst_{sig}_aligned() {{
+    return (void*)&kernel_gemm_impl<float,
         m_layout::{layout_c}, m_layout::{layout_a}, m_layout::{layout_b},
-        {bs}, {bm}, {bn}, {bk}, {wmc}, {wnc}, {tm}, {tn}, {threads_n},
-        {1 if is_aligned else 0}>;
+        {wm}, {wn}, {wmc}, {wnc}, {tm}, {tn}, {threads_n}, {bk}, {single_buffer}, {swizzle},
+        1>::run;
+}}
+
+extern "C" void* get_kernel_inst_{sig}_unaligned() {{
+    return (void*)&kernel_gemm_impl<float,
+        m_layout::{layout_c}, m_layout::{layout_a}, m_layout::{layout_b},
+        {wm}, {wn}, {wmc}, {wnc}, {tm}, {tn}, {threads_n}, {bk}, {single_buffer}, {swizzle},
+        0>::run;
 }}
 
 }} // namespace rocm_sgemm
 """
+        if write_if_changed(filepath, code):
+            written += 1
 
-            with open(filepath, 'w') as f:
-                f.write(code)
+    # Prune stale kernel files from previous generations that no longer match any config.
+    keep = set(file_list)
+    removed = 0
+    for stale in output_path.glob("kernel_inst_*.cpp"):
+        if stale.name not in keep:
+            stale.unlink()
+            removed += 1
 
-            file_index += 1
-
-    # Generate a file list for CMake
+    # File lists for CMake (write_if_changed so CMake only reconfigures when the set changes).
     filelist_path = output_path / "kernel_sources.txt"
-    with open(filelist_path, 'w') as f:
-        for filename in file_list:
-            f.write(f"{filename}\n")
+    write_if_changed(filelist_path, "".join(f"{name}\n" for name in file_list))
 
-    # Generate a CMake file that lists all kernel sources
-    cmake_file = output_path / "kernel_sources.cmake"
-    with open(cmake_file, 'w') as f:
-        f.write("# Auto-generated list of kernel source files\n")
-        f.write("set(KERNEL_INST_SOURCES\n")
-        for filename in file_list:
-            f.write(f"    ${{CMAKE_CURRENT_BINARY_DIR}}/src/kernel_inst/{filename}\n")
-        f.write(")\n")
+    cmake_lines = ["# Auto-generated list of kernel source files", "set(KERNEL_INST_SOURCES"]
+    cmake_lines += [f"    {(output_path / name).as_posix()}" for name in file_list]
+    cmake_lines.append(")")
+    cmake_lines.append("")
+    write_if_changed(output_path / "kernel_sources.cmake", "\n".join(cmake_lines))
 
-    print(f"Generated {len(file_list)} kernel source files in {output_dir}")
-    print(f"Each unique (config, layout) generates 2 files (aligned + unaligned)")
-    print(f"Total kernels: {len(file_list)}")
+    print(f"Generated {len(file_list)} kernel source files in {output_dir} "
+          f"({written} written/changed, {removed} stale removed)")
 
-    # Generate kernel lookup file
     generate_kernel_lookup(config_file, output_path, file_list)
-
     return file_list
 
 
 def generate_kernel_lookup(config_file, output_dir, file_list):
-    """Generate the kernel lookup implementation with static 3D table"""
+    """Static [config_idx][layout_idx][alignment_idx] table of signature-named getters."""
     with open(config_file, 'r') as f:
         config = json.load(f)
 
-    # Extract unique configurations
     unique_configs = set()
     for conf in config['configurations']:
-        cfg = conf['config']
-        unique_configs.add((
-            cfg['block_size'], cfg['block_m'], cfg['block_n'], cfg['block_k'],
-            cfg['warp_tile_m_count'], cfg['warp_tile_n_count'],
-            cfg['thread_tile_m'], cfg['thread_tile_n'], cfg['threads_n']
-        ))
-
-    # Add default config
-    default_config = (128, 128, 128, 8, 4, 4, 2, 4, 8)
-    if default_config not in unique_configs:
-        unique_configs.add(default_config)
-
+        unique_configs.add(_config_tuple_of(conf['config']))
+    default_config = (4, 1, 4, 4, 2, 4, 8, 8, 0, 8)
+    unique_configs.add(default_config)
     unique_configs = sorted(list(unique_configs))
     num_configs = len(unique_configs)
 
-    # Layout combinations (A, B, C)
     layouts = [
         ('row_major', 'row_major', 'row_major', 'rrr'),
         ('row_major', 'row_major', 'col_major', 'rrc'),
@@ -447,34 +449,19 @@ def generate_kernel_lookup(config_file, output_dir, file_list):
         ('col_major', 'col_major', 'col_major', 'ccc'),
     ]
 
-    # Build mapping from (config_tuple, layout_tuple) -> (file_index_aligned, file_index_unaligned)
-    config_layout_to_files = {}
-    seen_combinations = set()
-    file_index = 0
-
+    # (config_tuple, layout_tuple) -> signature (stable identity)
+    config_layout_to_sig = {}
+    seen = set()
     for conf in config['configurations']:
-        cfg = conf['config']
+        cfg    = conf['config']
         layout = conf['layout']
-
-        config_key = (
-            cfg['block_size'], cfg['block_m'], cfg['block_n'], cfg['block_k'],
-            cfg['warp_tile_m_count'], cfg['warp_tile_n_count'],
-            cfg['thread_tile_m'], cfg['thread_tile_n'], cfg['threads_n'],
-            layout['A'], layout['B'], layout['C']
-        )
-
-        if config_key in seen_combinations:
-            continue
-        seen_combinations.add(config_key)
-
-        config_tuple = config_key[:9]
+        config_tuple = _config_tuple_of(cfg)
         layout_tuple = (layout['A'], layout['B'], layout['C'])
-
-        # Store both file indices (aligned first, then unaligned)
-        config_layout_to_files[(config_tuple, layout_tuple)] = (file_index, file_index + 1)
-        file_index += 2  # Two files per combination
-
-    filepath = output_dir / "kernel_lookup.cpp"
+        if (config_tuple, layout_tuple) in seen:
+            continue
+        seen.add((config_tuple, layout_tuple))
+        config_layout_to_sig[(config_tuple, layout_tuple)] = config_signature(
+            config_tuple, layout_str_of(layout))
 
     code = """// Auto-generated kernel lookup - DO NOT EDIT
 #include <rocm_sgemm/kernel/common.hpp>
@@ -483,15 +470,10 @@ def generate_kernel_lookup(config_file, output_dir, file_list):
 namespace rocm_sgemm
 {
 
-// Forward declare extern C getters
 """
-
-    # Declare all getters
-    for (config_tuple, layout_tuple), (aligned_idx, unaligned_idx) in config_layout_to_files.items():
-        la, lb, lc = layout_tuple
-        layout_str = f"{la[0]}{lb[0]}{lc[0]}"
-        code += f'extern "C" void* get_kernel_inst_{aligned_idx}_{layout_str}_aligned();\n'
-        code += f'extern "C" void* get_kernel_inst_{unaligned_idx}_{layout_str}_unaligned();\n'
+    for (config_tuple, layout_tuple), sig in config_layout_to_sig.items():
+        code += f'extern "C" void* get_kernel_inst_{sig}_aligned();\n'
+        code += f'extern "C" void* get_kernel_inst_{sig}_unaligned();\n'
 
     code += f"""
 // Static kernel lookup table: [config_idx][layout_idx][alignment_idx]
@@ -500,29 +482,24 @@ namespace rocm_sgemm
 // alignment_idx: 0=unaligned, 1=aligned
 static void* kernel_table[{num_configs}][8][2] = {{
 """
-
-    # Generate the table initialization
     for config_idx, config_tuple in enumerate(unique_configs):
-        code += f"    // Config {config_idx}: bs={config_tuple[0]}, bm={config_tuple[1]}, bn={config_tuple[2]}, bk={config_tuple[3]}, wm={config_tuple[4]}, wn={config_tuple[5]}, tm={config_tuple[6]}, tn={config_tuple[7]}, threads_n={config_tuple[8]}\n"
+        wm, wn, wmc, wnc, tm, tn, threads_n, bk, single_buffer, swizzle = config_tuple
+        code += (f"    // Config {config_idx}: warps({wm},{wn}) warp_tile({wmc},{wnc}) "
+                 f"thread_tile({tm},{tn}) threads_n={threads_n} bk={bk} "
+                 f"single_buffer={single_buffer} swizzle={swizzle}\n")
         code += "    {\n"
-
-        for layout_idx, (layout_a, layout_b, layout_c, layout_str) in enumerate(layouts):
-            layout_tuple = (layout_a, layout_b, layout_c)
-            key = (config_tuple, layout_tuple)
-
+        for layout_idx, (la, lb, lc, layout_str) in enumerate(layouts):
+            key = (config_tuple, (la, lb, lc))
             code += "        {"
-            if key in config_layout_to_files:
-                aligned_idx, unaligned_idx = config_layout_to_files[key]
-                code += f"get_kernel_inst_{unaligned_idx}_{layout_str}_unaligned(), "
-                code += f"get_kernel_inst_{aligned_idx}_{layout_str}_aligned()"
+            if key in config_layout_to_sig:
+                sig = config_layout_to_sig[key]
+                code += f"get_kernel_inst_{sig}_unaligned(), get_kernel_inst_{sig}_aligned()"
             else:
                 code += "nullptr, nullptr"
-
             code += "}"
             if layout_idx < 7:
                 code += ","
             code += "\n"
-
         code += "    }"
         if config_idx < num_configs - 1:
             code += ","
@@ -530,7 +507,6 @@ static void* kernel_table[{num_configs}][8][2] = {{
 
     code += """};
 
-// Lookup function with alignment parameter
 void* lookup_kernel(size_t config_idx, size_t layout_idx, size_t alignment_idx)
 {
     return kernel_table[config_idx][layout_idx][alignment_idx];
@@ -538,11 +514,8 @@ void* lookup_kernel(size_t config_idx, size_t layout_idx, size_t alignment_idx)
 
 } // namespace rocm_sgemm
 """
-
-    with open(filepath, 'w') as f:
-        f.write(code)
-
-    print(f"Generated kernel lookup table in {filepath}")
+    write_if_changed(output_dir / "kernel_lookup.cpp", code)
+    print(f"Generated kernel lookup table in {output_dir / 'kernel_lookup.cpp'}")
 
 
 def main():
@@ -550,13 +523,9 @@ def main():
     parser.add_argument('config_file', type=str, help='Input JSON configuration file')
     parser.add_argument('output_file', type=str, help='Output header file')
     parser.add_argument('--kernel-dir', type=str, help='Output directory for kernel source files')
-
     args = parser.parse_args()
 
-    # Always generate the config header
     generate_config_header(args.config_file, args.output_file)
-
-    # Generate kernel sources if directory specified
     if args.kernel_dir:
         generate_kernel_sources(args.config_file, args.kernel_dir)
 

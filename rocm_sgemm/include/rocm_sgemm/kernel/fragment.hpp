@@ -28,12 +28,30 @@
 namespace rocm_sgemm
 {
 
+/**
+ * @brief Type selector struct for mapping high-level types to internal storage types.
+ *
+ * The default mapping is the identity (T -> T); specializations may remap a public
+ * type to a narrower storage representation without changing fragment semantics.
+ *
+ * @tparam T The high-level data type (e.g., float).
+ */
 template<class T>
 struct type_selector
 {
-    using type = T;
+    using type = T; ///< The mapped internal type.
 };
 
+/**
+ * @brief Represents a register-resident fragment for holding a tile of matrix data.
+ *
+ * Elements are stored in a single packed vector (ext_vector_type) so whole fragments
+ * move between registers and LDS with wide instructions, while the iterator/proxy pair
+ * provides element-wise access for scalar producers and consumers.
+ *
+ * @tparam T The high-level data type of the matrix elements.
+ * @tparam TILE The number of elements held by the fragment.
+ */
 template<class T, int TILE>
 class fragment
 {
@@ -47,6 +65,9 @@ private:
     frag_vec _fragment = {};
 
 public:
+    /**
+     * @brief Proxy class for accessing elements of the fragment.
+     */
     class proxy
     {
         frag_vec& vec_ref;
@@ -82,6 +103,9 @@ public:
         proxy(const proxy&)            = delete;
     };
 
+    /**
+     * @brief Iterator class for traversing elements of the fragment.
+     */
     class iterator
     {
         frag_vec& vec_ref;
@@ -149,6 +173,21 @@ public:
     }
 };
 
+/**
+ * @brief Loads a matrix tile into a fragment with a single vectorized copy.
+ *
+ * The TILE elements starting at `data` must be contiguous in memory (shared or global),
+ * so the entire fragment is fetched as one wide load. This matches the native access
+ * pattern: rows of Matrix A and columns of Matrix B are the contiguous axes.
+ *
+ * @tparam T The element data type.
+ * @tparam TILE The dimension of the tile.
+ *
+ * @param frag The destination fragment to populate.
+ * @param data Pointer to the starting position in shared or global memory.
+ * @param M Unused (kept for interface compatibility with strided load variants).
+ * @param N Unused (kept for interface compatibility with strided load variants).
+ */
 template<class T, int TILE>
 __device__ __forceinline__ void load_matrix(fragment<T, TILE>& frag, const T* data, int M, int N)
 {

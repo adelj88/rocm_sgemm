@@ -32,11 +32,35 @@
 namespace rocm_sgemm
 {
 
+/**
+ * @brief Selects and launches the appropriate compiled GEMM kernel dynamically.
+ *
+ * @tparam T The data type of the matrices.
+ * @tparam layout_C The memory layout of the output matrix C.
+ * @tparam layout_A The memory layout of the input matrix A.
+ * @tparam layout_B The memory layout of the input matrix B.
+ */
 template<class T, m_layout layout_C, m_layout layout_A, m_layout layout_B>
 struct kernel_launcher
 {
     using kernel_func_ptr = void (*)(T*, const T*, const T*, int, int, int);
 
+    /**
+     * @brief Launches the selected kernel on the GPU.
+     *
+     * @param config_idx The tuning configuration index to select the kernel.
+     * @param C Pointer to the output matrix C.
+     * @param A Pointer to the input matrix A.
+     * @param B Pointer to the input matrix B.
+     * @param M Number of rows of matrices C and A.
+     * @param N Number of columns of matrices C and B.
+     * @param K Number of columns of matrix A and rows of matrix B.
+     * @param block_m Block tile size along M (used for the runtime alignment check).
+     * @param block_n Block tile size along N (used for the runtime alignment check).
+     * @param grid_dim Grid dimensions for the kernel launch.
+     * @param block_dim Block dimensions for the kernel launch.
+     * @param stream The HIP stream to execute the kernel on.
+     */
     static void launch(size_t       config_idx,
                        T*           C,
                        const T*     A,
@@ -50,7 +74,7 @@ struct kernel_launcher
                        dim3         block_dim,
                        hipStream_t& stream)
     {
-        // Compute layout index (0-7) based on (A,B,C) layout combination
+        // Compute layout index (0-7) based on (A,B,C) order to match lookup table
         constexpr size_t layout_idx
             = (layout_A == m_layout::row_major && layout_B == m_layout::row_major
                && layout_C == m_layout::row_major)
@@ -78,7 +102,7 @@ struct kernel_launcher
                   ? 7 // ccc
                   : 0;
 
-        // Runtime alignment check (like the old code)
+        // Alignment index: 1 when the block tiles divide M and N exactly (aligned fast path).
         bool   is_aligned    = (M % block_m == 0 && N % block_n == 0);
         size_t alignment_idx = is_aligned ? 1 : 0;
 

@@ -1,89 +1,114 @@
-# Create the config directory in the binary dir if it doesn't exist
-file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/rocm_sgemm/kernel)
-file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/src/kernel_inst)
+# GPU architectures to build arch-specific libraries for.
+# Override with -DSGEMM_GPU_TARGETS="gfx1100;gfx1151" to change.
+set(SGEMM_GPU_TARGETS "gfx1100;gfx1151" CACHE STRING "Semicolon-separated list of GPU targets")
 
-# Tell CMake to reconfigure if the config file changes
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/config/gemm_config.json)
+foreach(GPU_TARGET ${SGEMM_GPU_TARGETS})
 
-# Run the Python script during CMake configuration to generate all files
-message(STATUS "Generating GEMM configuration and kernel sources...")
-execute_process(
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/config/generate_config.py
-            ${CMAKE_CURRENT_SOURCE_DIR}/config/gemm_config.json
-            ${CMAKE_CURRENT_BINARY_DIR}/include/rocm_sgemm/kernel/config_generated.hpp
-            --kernel-dir ${CMAKE_CURRENT_BINARY_DIR}/src/kernel_inst
-    RESULT_VARIABLE GENERATE_RESULT
-    OUTPUT_VARIABLE GENERATE_OUTPUT
-    ERROR_VARIABLE GENERATE_ERROR
-)
+    # Per-arch generated directories
+    set(ARCH_GEN_INCLUDE ${CMAKE_CURRENT_BINARY_DIR}/include_${GPU_TARGET}/rocm_sgemm/kernel)
+    set(ARCH_GEN_KERNEL  ${CMAKE_CURRENT_BINARY_DIR}/src/kernel_inst_${GPU_TARGET})
 
-if(NOT GENERATE_RESULT EQUAL 0)
-    message(FATAL_ERROR "Failed to generate configuration: ${GENERATE_ERROR}")
-endif()
+    # Directories are created if missing but NOT wiped: generate_config.py writes each
+    # file only when its contents change and prunes stale kernels itself, so unchanged
+    # kernels keep their mtime and only genuinely changed configs are recompiled.
+    file(MAKE_DIRECTORY ${ARCH_GEN_INCLUDE})
+    file(MAKE_DIRECTORY ${ARCH_GEN_KERNEL})
 
-message(STATUS "${GENERATE_OUTPUT}")
+    set(CONFIG_JSON ${CMAKE_CURRENT_SOURCE_DIR}/config/gemm_config_${GPU_TARGET}.json)
 
-# Include the generated CMake file that lists all kernel sources
-set(KERNEL_SOURCES_CMAKE "${CMAKE_CURRENT_BINARY_DIR}/src/kernel_inst/kernel_sources.cmake")
-if(EXISTS ${KERNEL_SOURCES_CMAKE})
-    include(${KERNEL_SOURCES_CMAKE})
-    list(LENGTH KERNEL_INST_SOURCES KERNEL_COUNT)
-    message(STATUS "Included kernel_sources.cmake with ${KERNEL_COUNT} kernel sources")
-    set(KERNEL_SOURCES ${KERNEL_INST_SOURCES})
-else()
-    message(FATAL_ERROR "kernel_sources.cmake was not generated")
-endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CONFIG_JSON})
 
-# Glob the generated kernel_lookup.cpp
-set(KERNEL_LOOKUP_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/src/kernel_inst/kernel_lookup.cpp")
+    message(STATUS "Generating SGEMM configuration for ${GPU_TARGET}...")
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/config/generate_config.py
+                ${CONFIG_JSON}
+                ${ARCH_GEN_INCLUDE}/config_generated.hpp
+                --kernel-dir ${ARCH_GEN_KERNEL}
+        RESULT_VARIABLE GENERATE_RESULT
+        OUTPUT_VARIABLE GENERATE_OUTPUT
+        ERROR_VARIABLE  GENERATE_ERROR
+    )
 
-# Build the library with gemm.cpp, kernel_lookup.cpp, and all generated kernel sources
-add_library(rocm_sgemm STATIC src/gemm.cpp ${KERNEL_LOOKUP_SOURCE} ${KERNEL_SOURCES})
+    if(NOT GENERATE_RESULT EQUAL 0)
+        message(FATAL_ERROR "Code generation failed for ${GPU_TARGET}: ${GENERATE_ERROR}")
+    endif()
+    message(STATUS "${GENERATE_OUTPUT}")
 
-# Force CMake to regenerate if kernel sources change
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_BINARY_DIR}/src/kernel_inst/kernel_sources.txt)
+    set(KERNEL_SOURCES_CMAKE "${ARCH_GEN_KERNEL}/kernel_sources.cmake")
+    if(EXISTS ${KERNEL_SOURCES_CMAKE})
+        include(${KERNEL_SOURCES_CMAKE})
+        # Copy to arch-specific variable immediately — KERNEL_INST_SOURCES is global
+        # and would be overwritten by the next loop iteration.
+        set(KERNEL_INST_SOURCES_${GPU_TARGET} ${KERNEL_INST_SOURCES})
+        list(LENGTH KERNEL_INST_SOURCES_${GPU_TARGET} KERNEL_COUNT)
+        message(STATUS "${GPU_TARGET}: ${KERNEL_COUNT} kernel source files")
+    else()
+        message(FATAL_ERROR "kernel_sources.cmake not generated for ${GPU_TARGET}")
+    endif()
 
-# Include HIP include directories and generated headers
-target_include_directories(rocm_sgemm PUBLIC
+    set(KERNEL_LOOKUP_SOURCE "${ARCH_GEN_KERNEL}/kernel_lookup.cpp")
+
+    # Per-arch shared library: librocm_sgemm_<arch>.so
+    set(ARCH_LIB rocm_sgemm_${GPU_TARGET})
+    add_library(${ARCH_LIB} SHARED
+        src/gemm.cpp
+        ${KERNEL_LOOKUP_SOURCE}
+        ${KERNEL_INST_SOURCES_${GPU_TARGET}}
+    )
+
+    target_include_directories(${ARCH_LIB} PUBLIC
+        ${HIP_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_BINARY_DIR}/include_${GPU_TARGET}
+    )
+
+    target_link_libraries(${ARCH_LIB} PUBLIC ${HIP_LIBRARIES})
+
+    target_compile_options(${ARCH_LIB} PRIVATE
+        --offload-arch=${GPU_TARGET}
+        -O3
+        -ffast-math
+        -mcumode
+    )
+
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        ${ARCH_GEN_KERNEL}/kernel_sources.txt)
+
+endforeach()
+
+# Header-only interface target for the runtime loader (no arch dependency).
+add_library(rocm_sgemm_loader INTERFACE)
+target_include_directories(rocm_sgemm_loader INTERFACE
     ${HIP_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_BINARY_DIR}/include  # Add this for generated headers
+)
+target_link_libraries(rocm_sgemm_loader INTERFACE ${HIP_LIBRARIES} dl)
+# Tell the loader where the arch libraries are at build time.
+target_compile_definitions(rocm_sgemm_loader INTERFACE
+    ROCM_SGEMM_LIB_DIR="${CMAKE_CURRENT_BINARY_DIR}"
 )
 
-# Link HIP libraries
-target_link_libraries(rocm_sgemm PUBLIC ${HIP_LIBRARIES})
-
-# Add optimization flags
-target_compile_options(rocm_sgemm PRIVATE
-    -O3                 # High optimization
-    -ffast-math         # Fast math operations (may break strict IEEE compliance)
-    -mcumode            # CU mode for RDNA GPUs
-)
-
-# Add tuner executable
+# Tuner (hipRTC JIT harness). Uses the first target's config for its default arch.
 add_executable(tuner config/tuner.cpp)
-
-# Include HIP include directories and generated headers
 target_include_directories(tuner PUBLIC
     ${HIP_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_BINARY_DIR}/include  # Add this for generated headers
 )
-
-# Link HIP libraries
 target_link_libraries(tuner PUBLIC ${HIP_LIBRARIES} hiprtc benchmark::benchmark)
 target_link_directories(tuner PRIVATE ${ROCM_ROOT}/lib)
-
 target_compile_definitions(tuner PRIVATE
     PROJECT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     ROCM_INCLUDE_DIR="${ROCM_ROOT}"
 )
 
-# Copy tune.py to build directory
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/config/tune.py
     ${CMAKE_BINARY_DIR}/tune.py
+    COPYONLY
+)
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/config/race.py
+    ${CMAKE_BINARY_DIR}/race.py
     COPYONLY
 )

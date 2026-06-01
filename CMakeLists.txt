@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(rocm_sgemm LANGUAGES CXX)
 
-# Set C++ standard to C++17
-set(CMAKE_CXX_STANDARD 17)
+# Set C++ standard to C++20
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find Python 3
